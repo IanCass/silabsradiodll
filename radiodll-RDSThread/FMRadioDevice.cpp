@@ -42,7 +42,7 @@ static DWORD WINAPI RDSThread(LPVOID lpParam)
     if (lpParam) {
 		while (true) {
 			((CFMRadioDevice*)lpParam)->updateRDSData(&rdsTimerData);
-			Sleep(200);
+			//Sleep(33);
 		}
     }
 	return 0;
@@ -256,9 +256,9 @@ bool CFMRadioDevice::updateRDSData(RDSData* rdsData)
 		//Call the update function and if it succeeds, fill the return structure with the current RDBS data
 		if (UpdateRDS())
 		{
-			//if ((m_Register[STATUSRSSI] & STATUSRSSI_RDSR) && (!m_RDSCleared))
+			if ((m_Register[STATUSRSSI] & STATUSRSSI_RDSR) && (!m_RDSCleared))
 			//if ((m_Register[STATUSRSSI] & STATUSRSSI_RDSR))
-			if (m_Register[STATUSRSSI])
+			//if (m_Register[STATUSRSSI])
 			{
 				//If the RDS ready bit is set and hasnt been cleared yet, then get the RDS text
 				//and clear it
@@ -778,8 +778,10 @@ bool CFMRadioDevice::OpenFMRadioData()
 				if (detailResult)
 				{
 					//Open the device
-					hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+					//hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
 					
+					hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, NULL, NULL);
+
 					if (hHidDeviceHandle != INVALID_HANDLE_VALUE)
 					{
 						HIDD_ATTRIBUTES	hidDeviceAttributes;
@@ -1600,9 +1602,9 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 					//If it didn't go through, then wait on the object to complete the read
 					DWORD error = GetLastError();
 					if (error == ERROR_IO_PENDING)
-						if (WaitForSingleObject(o.hEvent, 3000))
+						if (WaitForSingleObject(o.hEvent, 6000))
 							status = true;
-					GetOverlappedResult(m_FMRadioDataHandle, &o, &bytesRead, FALSE);
+					GetOverlappedResult(m_FMRadioDataHandle, &o, &bytesRead, true);
 				}
 				else
 					status = true;
