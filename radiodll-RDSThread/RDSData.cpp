@@ -25,7 +25,7 @@ CRDSData::CRDSData()
 	//Initialize the RDS
 	InitRDS();	
 
-	outfile.open("c:\\log.txt", std::ofstream::app);
+	//outfile.open("c:\\log.txt", std::ofstream::app);
 	outfile << "Log File\r\n" << std::flush;
 
 }	

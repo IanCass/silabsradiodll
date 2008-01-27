@@ -256,8 +256,8 @@ bool CFMRadioDevice::updateRDSData(RDSData* rdsData)
 		//Call the update function and if it succeeds, fill the return structure with the current RDBS data
 		if (UpdateRDS())
 		{
-			if ((m_Register[STATUSRSSI] & STATUSRSSI_RDSR) && (!m_RDSCleared))
-			//if ((m_Register[STATUSRSSI] & STATUSRSSI_RDSR))
+			//if ((m_Register[STATUSRSSI] & STATUSRSSI_RDSR) && (!m_RDSCleared))
+			if ((m_Register[STATUSRSSI] & STATUSRSSI_RDSR))
 			//if (m_Register[STATUSRSSI])
 			{
 				//If the RDS ready bit is set and hasnt been cleared yet, then get the RDS text
