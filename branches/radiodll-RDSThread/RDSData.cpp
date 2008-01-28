@@ -25,7 +25,7 @@ CRDSData::CRDSData()
 	//Initialize the RDS
 	InitRDS();	
 
-	//outfile.open("c:\\log.txt", std::ofstream::app);
+	outfile.open("c:\\log.txt", std::ofstream::app);
 	outfile << "Log File\r\n" << std::flush;
 
 }	
@@ -98,6 +98,21 @@ void CRDSData::UpdateRDSText(WORD* registers)
     BYTE errorFlags;
 	bool abflag;
 
+	// Check errors
+	errorCount = (registers[STATUSRSSI] & 0x0E00) >> 9;
+	errorFlags = registers[SYSCONFIG3] & 0xFF;
+
+	if (errorCount < 4)
+	{
+		m_RdsBlocksValid += (4 - errorCount);
+	}
+
+    // Drop the data if there are any errors
+    if (errorCount)
+	{
+		return;
+	}
+
 	// Do Dedup
 	/*
 	if (oldregisters) {
@@ -124,30 +139,16 @@ void CRDSData::UpdateRDSText(WORD* registers)
 	rdsc = registers[RDSC];
 	rdsd = registers[RDSD];
 
+	// work out the validation limit
+	if ((registers[STATUSRSSI] & STATUSRSSI_RSSI) > 35) {
+		validation_limit = 1;
+	} else if ((registers[STATUSRSSI] & STATUSRSSI_RSSI) > 31) {
+		validation_limit = 4;
+	} else {
+		validation_limit = 6;
+	}
     
 	m_RdsDataAvailable = 0;
-
-	//errorCount = (registers[0xa] & 0x0E00) >> 9;
-	errorCount = (registers[STATUSRSSI] & 0x0E00) >> 9;
-
-	errorFlags = registers[SYSCONFIG3] & 0xFF;
-
-	if (errorCount < 4)
-	{
-		m_RdsBlocksValid += (4 - errorCount);
-	}
-
-    // Drop the data if there are any errors
-    if (errorCount)
-	{
-		return;
-	}
-
-    // Drop the data if more than two errors were corrected
-    if (ERRORS_CORRECTED(errorFlags, BLOCK_B) > CORRECTED_ONE_TO_TWO)
-	{
-        //return;
-	}
 
     UpdateRDSFifo(registers);
 
@@ -309,6 +310,7 @@ void CRDSData::UpdateRDSText(WORD* registers)
 			//m_tp = (registers[RDSB] & 0x400 == 0x400)?true:false;
 		    break;
 
+		// 2A, Radio Text
 	    case RDS_TYPE_2A:
 	        addr = (registers[RDSB] & 0xf) * 4;
 			//m_tp = (registers[RDSB] & 0x400 == 0x400)?true:false;
@@ -316,18 +318,19 @@ void CRDSData::UpdateRDSText(WORD* registers)
 			abflag = (registers[RDSB] & 0x10) == 0x10 ? true : false;
 			update_rt(abflag, 4, addr, (BYTE*)&(registers[RDSC]), errorFlags);
 		    break;
-    
+
+		// 2B, Radio Text
 	    case RDS_TYPE_2B:
-	        addr = (registers[RDSB] & 0xf) * 2;
+	    //    addr = (registers[RDSB] & 0xf) * 4;
 			//m_tp = (registers[RDSB] & 0x400 == 0x400)?true:false;
 			//abflag = (registers[0xb] & 0x0010) >> 4; // this is wrong
 			//abflag = (registers[RDSB] & 0x10) >> 4;
-			abflag = (registers[RDSB] & 0x10) == 0x10 ? true : false;
+		//	abflag = (registers[RDSB] & 0x10) == 0x10 ? true : false;
 	        // The last 32 bytes are unused in this format
-			m_rtTmp0[32]    = 0x0d;
-			m_rtTmp1[32]    = 0x0d;
-			m_rtCnt[32]     = RT_VALIDATE_LIMIT;
-			update_rt(abflag, 2, addr, (BYTE*)&(registers[RDSD]), errorFlags);
+		//	m_rtTmp0[32]    = 0x0d;
+		//	m_rtTmp1[32]    = 0x0d;
+		//	m_rtCnt[32]     = RT_VALIDATE_LIMIT;
+		//	update_rt(abflag, 2, addr, (BYTE*)&(registers[RDSD]), errorFlags);
 	        break;
 
 		// 4A, Clock
@@ -412,7 +415,7 @@ void CRDSData::update_pi(WORD current_pi)
         rds_pi_validate_count++;
     }
 
-    if (rds_pi_validate_count > RDS_PI_VALIDATE_LIMIT)
+    if (rds_pi_validate_count > validation_limit)
 	{
         m_piDisplay = rds_pi_nonvalidated;
 	}
@@ -435,7 +438,7 @@ void CRDSData::update_pty(BYTE current_pty)
         rds_pty_validate_count++;
     }
 
-    if (rds_pty_validate_count > RDS_PTY_VALIDATE_LIMIT)
+    if (rds_pty_validate_count > validation_limit)
 	{
         m_ptyDisplay = rds_pty_nonvalidated;
 
@@ -485,7 +488,7 @@ void CRDSData::update_ps(BYTE addr, BYTE byte)
 	if(m_psTmp0[addr] == byte)
 	{
         // The new byte matches the high probability byte
-		if(m_psCnt[addr] < PS_VALIDATE_LIMIT)
+		if(m_psCnt[addr] < validation_limit)
 		{
 			m_psCnt[addr]++;
 		}
@@ -493,7 +496,7 @@ void CRDSData::update_ps(BYTE addr, BYTE byte)
 		{
             // we have recieved this byte enough to max out our counter
             // and push it into the low probability array as well
-			m_psCnt[addr] = PS_VALIDATE_LIMIT;
+			m_psCnt[addr] = validation_limit;
 			m_psTmp1[addr] = byte;
 		}
 	}
@@ -503,11 +506,11 @@ void CRDSData::update_ps(BYTE addr, BYTE byte)
         // them, reset the counter and flag the text as in transition.
         // Note that the counter for this character goes higher than
         // the validation limit because it will get knocked down later
-		if(m_psCnt[addr] >= PS_VALIDATE_LIMIT)
+		if(m_psCnt[addr] >= validation_limit)
 		{
 			textChange = 1;
 		}
-		m_psCnt[addr] = PS_VALIDATE_LIMIT + 1;
+		m_psCnt[addr] = validation_limit + 1;
 		m_psTmp1[addr] = m_psTmp0[addr];
 		m_psTmp0[addr] = byte;
 	}
@@ -544,7 +547,7 @@ void CRDSData::update_ps(BYTE addr, BYTE byte)
     // validation limit.
 	for (i=0;i<sizeof(m_psCnt);i++)
 	{
-		if(m_psCnt[i] < PS_VALIDATE_LIMIT)
+		if(m_psCnt[i] < validation_limit)
 		{
 			psComplete = 0;
 			break;

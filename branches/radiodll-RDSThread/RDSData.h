@@ -74,7 +74,7 @@ typedef struct rdsFifo_struct_tag {
 #define RT_VALIDATE_LIMIT 2
 #define RDS_PI_VALIDATE_LIMIT  4
 #define RDS_PTY_VALIDATE_LIMIT 4
-#define PS_VALIDATE_LIMIT 3
+#define PS_VALIDATE_LIMIT 6
 
 class CRDSData  
 {
@@ -85,6 +85,7 @@ class CRDSData
 	BYTE m_RdsWritePtr;
 	BYTE m_RdsFifoEmpty;
 	rdsFifo_struct	m_RdsFifo[RDS_FIFO_SIZE];
+	int validation_limit;
 
 	BYTE rdsa;
 	BYTE rdsb;
