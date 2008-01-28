@@ -86,6 +86,11 @@ class CRDSData
 	BYTE m_RdsFifoEmpty;
 	rdsFifo_struct	m_RdsFifo[RDS_FIFO_SIZE];
 
+	BYTE rdsa;
+	BYTE rdsb;
+	BYTE rdsc;
+	BYTE rdsd;
+
 	// RDS Radio Text
     BYTE m_rtDisplay[64];   // Displayed Radio Text
 	BYTE m_rtTmp0[64];      // Temporary Radio Text (high probability)

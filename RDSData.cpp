@@ -24,15 +24,10 @@ CRDSData::CRDSData()
 {
 	//Initialize the RDS
 	InitRDS();	
-	//std::ofstream outfile;
-	//char output [100];
-
 
 	//outfile.open("c:\\log.txt", std::ofstream::app);
+	outfile << "Log File\r\n" << std::flush;
 
-	//sprintf(output, "TuneFreq: %d\n", frequency);
-
-	//outfile << output;
 }	
 
 CRDSData::~CRDSData()
@@ -102,6 +97,33 @@ void CRDSData::UpdateRDSText(WORD* registers)
 	BYTE errorCount;
     BYTE errorFlags;
 	bool abflag;
+
+	// Do Dedup
+	/*
+	if (oldregisters) {
+		memcmp(oldregisters, registers, sizeof(&registers));
+	} else {
+		oldregisters = (WORD*)malloc(sizeof(&oldregisters));
+	}
+
+	memcpy(&oldregisters, &registers, sizeof(&registers));
+	*/
+
+	if (rdsa & rdsb & rdsc & rdsd) {
+		BYTE A = registers[RDSA];
+		BYTE B = registers[RDSB];
+		BYTE C = registers[RDSC];
+		BYTE D = registers[RDSD];
+		if (rdsa == A && rdsb == B && rdsc == C && rdsd == D) {
+				return;
+		}
+	}
+
+	rdsa = registers[RDSA];
+	rdsb = registers[RDSB];
+	rdsc = registers[RDSC];
+	rdsd = registers[RDSD];
+
     
 	m_RdsDataAvailable = 0;
 
@@ -146,7 +168,6 @@ void CRDSData::UpdateRDSText(WORD* registers)
     // update pty code.  
     update_pty((registers[RDSB]>>5) & 0x1f); 
 
-	/*
 	switch (group_type) {
 		case RDS_TYPE_0A:
 					outfile << "0A";
@@ -251,8 +272,8 @@ void CRDSData::UpdateRDSText(WORD* registers)
 		<< " [B=" << std::bitset<16>(registers[RDSB]) << ","
 		<< " [C=" << std::bitset<16>(registers[RDSC]) << ","
 		<< " [D=" << std::bitset<16>(registers[RDSD]) << ","
-		<< "]\n";
-	*/
+		<< "]\n" << std::flush;
+
 	
 	char* szString;
 

@@ -37,6 +37,17 @@ static VOID CALLBACK RDSTimerRoutine(PVOID lpParam, BOOLEAN TimerOrWaitFired)
     }
 }
 
+static DWORD WINAPI RDSThread(LPVOID lpParam)
+{
+    if (lpParam) {
+		while (true) {
+			((CFMRadioDevice*)lpParam)->updateRDSData(&rdsTimerData);
+			//Sleep(33);
+		}
+    }
+	return 0;
+}
+
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
@@ -247,6 +258,7 @@ bool CFMRadioDevice::updateRDSData(RDSData* rdsData)
 		{
 			//if ((m_Register[STATUSRSSI] & STATUSRSSI_RDSR) && (!m_RDSCleared))
 			if ((m_Register[STATUSRSSI] & STATUSRSSI_RDSR))
+			//if (m_Register[STATUSRSSI])
 			{
 				//If the RDS ready bit is set and hasnt been cleared yet, then get the RDS text
 				//and clear it
@@ -269,6 +281,8 @@ bool CFMRadioDevice::updateRDSData(RDSData* rdsData)
 				m_RDSCleared = false;
 			}
 		}
+	} else {
+		// no rds
 	}
 		
 	return status;
@@ -764,8 +778,10 @@ bool CFMRadioDevice::OpenFMRadioData()
 				if (detailResult)
 				{
 					//Open the device
-					hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+					//hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
 					
+					hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, NULL, NULL);
+
 					if (hHidDeviceHandle != INVALID_HANDLE_VALUE)
 					{
 						HIDD_ATTRIBUTES	hidDeviceAttributes;
@@ -1586,9 +1602,9 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 					//If it didn't go through, then wait on the object to complete the read
 					DWORD error = GetLastError();
 					if (error == ERROR_IO_PENDING)
-						if (WaitForSingleObject(o.hEvent, 3000))
+						if (WaitForSingleObject(o.hEvent, 6000))
 							status = true;
-					GetOverlappedResult(m_FMRadioDataHandle, &o, &bytesRead, FALSE);
+					GetOverlappedResult(m_FMRadioDataHandle, &o, &bytesRead, true);
 				}
 				else
 					status = true;
@@ -1802,6 +1818,7 @@ bool CFMRadioDevice::DestroyRadioTimer()
 bool CFMRadioDevice::CreateRDSTimer()
 {
 	bool ret;
+	DWORD dwThreadId;
 
 	if (h_rdsTimer) {
 		// Didn't destroy the old one first!
@@ -1816,6 +1833,18 @@ bool CFMRadioDevice::CreateRDSTimer()
 	}
 
 	// Create the radio player timer
+	h_rdsTimer = CreateThread(
+    NULL,       // pointer to security attributes
+    0,          // initial thread stack size
+    RDSThread, // pointer to thread function
+    this,          // argument for new thread
+    0,          // creation flags (immediate)
+    &dwThreadId // pointer to receive thread ID
+	);
+	
+	ret = true;
+    
+	/*
 	ret = CreateTimerQueueTimer(&h_rdsTimer,
 					      NULL,
 						  RDSTimerRoutine,
@@ -1823,6 +1852,7 @@ bool CFMRadioDevice::CreateRDSTimer()
 						  0,
 						  RDS_TIMER_PERIOD,
 						  WT_EXECUTEINPERSISTENTTHREAD);
+	*/
 	return (ret);
 }
 
@@ -1840,7 +1870,8 @@ bool CFMRadioDevice::DestroyRDSTimer()
 	m_StreamingAllowed = false;
 
 	// Delete the radio player timer
-	ret = DeleteTimerQueueTimer(NULL, h_rdsTimer, INVALID_HANDLE_VALUE);
+	//ret = DeleteTimerQueueTimer(NULL, h_rdsTimer, INVALID_HANDLE_VALUE);
+	ret = TerminateThread(h_rdsTimer, 0);
 
 	h_rdsTimer = NULL;
 
