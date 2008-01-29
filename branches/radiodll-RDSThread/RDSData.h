@@ -15,6 +15,7 @@
 #include <map>
 #include <fstream>
 
+
 //Default text string for the RDS
 //#define DEFAULT_RDS_TEXT	"STAY IN TUNE WITH SILICON LABS FM TUNER TECHNOLOGY - "
 #define DEFAULT_RDS_TEXT	""
@@ -113,6 +114,7 @@ class CRDSData
 	WORD m_RdsBlocksValid;		// Number of valid blocks received
 	WORD m_RdsBlocksTotal;		// Total number of blocks expected
 
+
 	// Debug information storing number of each kind of group received
 	WORD m_debug_group_counters[32];
 
@@ -124,6 +126,7 @@ class CRDSData
 	void update_ps(BYTE addr, BYTE byte);
 	void update_rt(bool abFlag, BYTE count, BYTE addr, BYTE* byte, BYTE errorFlags);
 	void display_rt();
+
 
 public:
 	CRDSData();
