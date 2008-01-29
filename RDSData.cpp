@@ -10,6 +10,7 @@
 #include <fstream>
 #include <bitset>
 
+
 #ifdef _DEBUG
 #undef THIS_FILE
 static char THIS_FILE[]=__FILE__;
@@ -25,7 +26,7 @@ CRDSData::CRDSData()
 	//Initialize the RDS
 	InitRDS();	
 
-	outfile.open("c:\\log.txt", std::ofstream::app);
+	//outfile.open("c:\\log.txt", std::ofstream::app);
 	outfile << "Log File\r\n" << std::flush;
 
 }	
@@ -340,12 +341,13 @@ void CRDSData::UpdateRDSText(WORD* registers)
 
 		// 8A, TMC
 	    case RDS_TYPE_8A:
-			szString = (char*)registers;
+			//szString = (char*)registers;
 			//m_tp = (registers[RDSB] & 0x400 == 0x400)?true:false;
 			//SendToXPort(1, NULL, 0); // Pause real GPS before sending
 			//SendToXPort(2, "?", 1 ); // Send data
 			//SendToXPort(2, szString, 8 ); // Send data
 			//SendToXPort(2, "?", 1 ); // Send data
+
 			//SendToXPort(0, NULL, 0); // Unpause real GPS when done sending
 		    break;
 
@@ -746,9 +748,6 @@ void CRDSData::update_rt(bool abFlag, BYTE count, BYTE addr, BYTE* byte, BYTE er
     // Display the Radio Text
 	display_rt();
 }
-
-
-
 
 
 
