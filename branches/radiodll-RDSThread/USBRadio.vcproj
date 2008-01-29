@@ -455,6 +455,14 @@
 				RelativePath="USBRadio.h"
 				>
 			</File>
+			<File
+				RelativePath=".\Version.h"
+				>
+			</File>
+			<File
+				RelativePath=".\VspApi.h"
+				>
+			</File>
 		</Filter>
 		<Filter
 			Name="Resource Files"
