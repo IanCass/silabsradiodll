@@ -30,6 +30,17 @@ static VOID CALLBACK RadioTimerRoutine(PVOID lpParam, BOOLEAN TimerOrWaitFired)
     }
 }
 
+static DWORD WINAPI RadioThread(LPVOID lpParam)
+{
+    if (lpParam) {
+		while (true) {
+			((CFMRadioDevice*)lpParam)->StreamAudio();
+			Sleep(30);
+		}
+    }
+	return 0;
+}
+
 static VOID CALLBACK RDSTimerRoutine(PVOID lpParam, BOOLEAN TimerOrWaitFired)
 {
     if (lpParam) {
@@ -75,9 +86,6 @@ CFMRadioDevice::CFMRadioDevice(bool GetRDSText)
 	m_Streaming = false;
 	m_Tuning = false;
 
-	//Set the RDS cleared variable to false
-	m_RDSCleared = false;
-
 	//Setup the wave format based on our defined audio data
 	m_FMRadioWaveFormat.wFormatTag = WAVE_FORMAT_PCM;
 	m_FMRadioWaveFormat.nSamplesPerSec = SAMPLES_PER_SECOND;
@@ -116,6 +124,9 @@ CFMRadioDevice::CFMRadioDevice(bool GetRDSText)
 	change_process_priority = true;
 
 	m_GetRDSText = GetRDSText;
+
+	m_OldRegister = 0;
+	m_RDSCleared = true;
 }
 
 CFMRadioDevice::~CFMRadioDevice()
@@ -249,42 +260,57 @@ bool CFMRadioDevice::GetRDSData(RDSData* rdsData) {
 bool CFMRadioDevice::updateRDSData(RDSData* rdsData)
 {
 	bool status = false;
+	char op[20];
 
 	//Check that rdbsData is not NULL
-	if (rdsData)
+	if (rdsData)  //PC Note : need to check why we do this
 	{
 		//Call the update function and if it succeeds, fill the return structure with the current RDBS data
 		if (UpdateRDS())
 		{
-			//if ((m_Register[STATUSRSSI] & STATUSRSSI_RDSR) && (!m_RDSCleared))
-			if ((m_Register[STATUSRSSI] & STATUSRSSI_RDSR))
-			//if (m_Register[STATUSRSSI])
-			{
-				//If the RDS ready bit is set and hasnt been cleared yet, then get the RDS text
-				//and clear it
-				m_RDSCleared = true;
-
-				if (m_GetRDSText) {
-					m_RDS.UpdateRDSText(m_Register);
-
-
-					status = true;
+			if(memcmp(&m_Register[STATUSRSSI], m_OldRDSRegister, sizeof(m_OldRDSRegister))==0)
+			{	//registers identicle
+				if(m_RDSCleared)//first time we have seen this string
+				{//already seen ignore
+					return(status);
 				}
-			}
-			else if ((m_Register[STATUSRSSI] & STATUSRSSI_RDSR) && (m_RDSCleared))
-			{
-				//If the RDS ready bit is set and has been cleared, then wait for RDS ready to clear
 			}
 			else
 			{
-				//If the RDS read bit is not set, reset the RDS clear, and wait for RDS read to set again
-				m_RDSCleared = false;
+				memcpy(m_OldRDSRegister, &m_Register[STATUSRSSI], sizeof(m_OldRDSRegister)); 
+				if((m_Register[STATUSRSSI] & STATUSRSSI_RDSR)==0)
+					m_RDSCleared = true;
+				else
+					m_RDSCleared = false;
+				return(status);
 			}
+
+
+			//has status reg changed
+			/*if (m_OldRegister == (m_Register[STATUSRSSI] & STATUSRSSI_RDSR))
+			{
+				OutputDebugString("*");
+				//return(status);//no new data nothing to do, return with status  of flase
+			}
+			
+			OutputDebugString(".");*/
+			
+			//m_OldRegister = m_Register[STATUSRSSI] & STATUSRSSI_RDSR;
+										
+			if ((m_Register[STATUSRSSI] & STATUSRSSI_RDSR))
+			{
+				sprintf(op, "\r\nRDS Status:%04X", (unsigned int)m_Register[STATUSRSSI]);
+				OutputDebugString(op);
+				if (m_GetRDSText) 
+				{
+					m_RDS.UpdateRDSText(m_Register);
+					status = true;
+				}
+			}
+			else
+				OutputDebugString(".");
 		}
-	} else {
-		// no rds
 	}
-		
 	return status;
 }
 
@@ -1418,7 +1444,7 @@ bool CFMRadioDevice::SetRadioData(RadioData* radioData)
 			m_ScratchPage[i] = 0xFF;
 
 		//Clear the scratch page of used data to 00s
-		for (int i = 0; i < SCRATCH_PAGE_USED_SIZE; i++)
+		for (i = 0; i < SCRATCH_PAGE_USED_SIZE; i++)
 			m_ScratchPage[i] = 0x00;
 
 		//See GetRadioData for the format of the scratch page
@@ -1761,6 +1787,7 @@ bool CFMRadioDevice::SetStreamReport(BYTE report, BYTE* dataBuffer, DWORD dataBu
 bool CFMRadioDevice::CreateRadioTimer()
 {
 	bool ret;
+	DWORD dwThreadId;
 
 	if (h_radioTimer) {
 		// Didn't destroy the old one first!
@@ -1768,20 +1795,32 @@ bool CFMRadioDevice::CreateRadioTimer()
 	}
 
 	// Save our previous priority class to be restored later
-	if (change_process_priority) {
+	/*if (change_process_priority) {
 		m_previous_process_priority = GetPriorityClass(GetCurrentProcess());
 		SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
 		m_process_priority_set = true;
-	}
+	}*/
 
-	// Create the radio player timer
+	/*// Create the radio player timer
 	ret = CreateTimerQueueTimer(&h_radioTimer,
 					      NULL,
 						  RadioTimerRoutine,
 						  this,
 						  0,
 						  RADIO_TIMER_PERIOD,
-						  WT_EXECUTEINPERSISTENTTHREAD);
+						  WT_EXECUTEINPERSISTENTTHREAD);*/
+
+	// Create the radio player timer
+	h_radioTimer = CreateThread(
+    NULL,       // pointer to security attributes
+    0,          // initial thread stack size
+    RadioThread, // pointer to thread function
+    this,          // argument for new thread
+    0,          // creation flags (immediate)
+    &dwThreadId // pointer to receive thread ID
+	);
+	
+	ret = true;
 
 	m_StreamingAllowed = ret ? true : false;
 
@@ -1802,15 +1841,16 @@ bool CFMRadioDevice::DestroyRadioTimer()
 	m_StreamingAllowed = false;
 
 	// Delete the radio player timer
-	ret = DeleteTimerQueueTimer(NULL, h_radioTimer, INVALID_HANDLE_VALUE);
+	//ret = DeleteTimerQueueTimer(NULL, h_radioTimer, INVALID_HANDLE_VALUE);
+	ret = TerminateThread(h_radioTimer, 0);
 
 	h_radioTimer = NULL;
 
-	// Restore the previous priority class
+	/*// Restore the previous priority class
 	if (change_process_priority && m_process_priority_set) {
 		SetPriorityClass(GetCurrentProcess(), m_previous_process_priority);
 		m_process_priority_set = false;
-	}
+	}*/
 
 	return (ret);
 }
@@ -1826,11 +1866,11 @@ bool CFMRadioDevice::CreateRDSTimer()
 	}
 
 	// Save our previous priority class to be restored later
-	if (change_process_priority) {
+	/*if (change_process_priority) {
 		m_previous_process_priority = GetPriorityClass(GetCurrentProcess());
 		SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
 		m_process_priority_set = true;
-	}
+	}*/
 
 	// Create the radio player timer
 	h_rdsTimer = CreateThread(
@@ -1875,11 +1915,11 @@ bool CFMRadioDevice::DestroyRDSTimer()
 
 	h_rdsTimer = NULL;
 
-	// Restore the previous priority class
+	/*// Restore the previous priority class
 	if (change_process_priority && m_process_priority_set) {
 		SetPriorityClass(GetCurrentProcess(), m_previous_process_priority);
 		m_process_priority_set = false;
-	}
+	}*/
 
 	return (ret);
 }

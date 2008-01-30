@@ -88,6 +88,7 @@ extern "C" {
 
 #define FMRADIO_REGISTER	WORD
 #define FMRADIO_REGISTER_SIZE	sizeof(FMRADIO_REGISTER)
+#define RDS_REGISTER_SIZE	sizeof(FMRADIO_REGISTER)
 
 #define DEVICEID		0
 #define CHIPID			1
@@ -374,8 +375,10 @@ private:
 	SCRATCH_PAGE		m_ScratchPage;
 
 	CRDSData	m_RDS;
+	WORD		m_OldRegister;
+	WORD		m_OldRDSRegister[RDS_REGISTER_NUM];
 	bool		m_RDSCleared;
-
+	
 	double	CalculateStationFrequency(FMRADIO_REGISTER hexChannel);
 	WORD	CalculateStationFrequencyBits(double frequency);
 
@@ -429,7 +432,7 @@ private:
 	bool		m_Tuning;
 	int			m_CurrentBlock;
 	int			m_FreeBlock;
-
+	
 	bool	StreamAudioIn();
 	bool	StreamAudioOut();
 	bool	ChangeLED(BYTE ledState);
