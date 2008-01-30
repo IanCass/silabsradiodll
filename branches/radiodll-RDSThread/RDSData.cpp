@@ -98,10 +98,14 @@ void CRDSData::UpdateRDSText(WORD* registers)
 	BYTE errorCount;
     BYTE errorFlags;
 	bool abflag;
+	char op[20];
 
 	// Check errors
 	errorCount = (registers[STATUSRSSI] & 0x0E00) >> 9;
 	errorFlags = registers[SYSCONFIG3] & 0xFF;
+
+	sprintf(op, "-Config:%04X", (unsigned int)registers[SYSCONFIG3]);
+	OutputDebugString(op);
 
 	if (errorCount < 4)
 	{
@@ -114,44 +118,11 @@ void CRDSData::UpdateRDSText(WORD* registers)
 		return;
 	}
 
-	// Do Dedup
-	/*
-	if (oldregisters) {
-		memcmp(oldregisters, registers, sizeof(&registers));
-	} else {
-		oldregisters = (WORD*)malloc(sizeof(&oldregisters));
-	}
+	LogRDSDataStream(registers);
 
-	memcpy(&oldregisters, &registers, sizeof(&registers));
-	*/
-
-	if (rdsa & rdsb & rdsc & rdsd) {
-		BYTE A = registers[RDSA];
-		BYTE B = registers[RDSB];
-		BYTE C = registers[RDSC];
-		BYTE D = registers[RDSD];
-		if (rdsa == A && rdsb == B && rdsc == C && rdsd == D) {
-				return;
-		}
-	}
-
-	rdsa = registers[RDSA];
-	rdsb = registers[RDSB];
-	rdsc = registers[RDSC];
-	rdsd = registers[RDSD];
-
-	// work out the validation limit
-	if ((registers[STATUSRSSI] & STATUSRSSI_RSSI) > 35) {
-		validation_limit = 1;
-	} else if ((registers[STATUSRSSI] & STATUSRSSI_RSSI) > 31) {
-		validation_limit = 4;
-	} else {
-		validation_limit = 6;
-	}
-    
 	m_RdsDataAvailable = 0;
 
-    UpdateRDSFifo(registers);
+    //UpdateRDSFifo(registers);
 
 	m_RdsIndicator = 100; // Reset RdsIndicator
     
@@ -170,113 +141,6 @@ void CRDSData::UpdateRDSText(WORD* registers)
     // update pty code.  
     update_pty((registers[RDSB]>>5) & 0x1f); 
 
-	switch (group_type) {
-		case RDS_TYPE_0A:
-					outfile << "0A";
-					break;
-		case RDS_TYPE_0B:
-					outfile << "0B";
-					break;
-		case RDS_TYPE_1A:
-					outfile << "1A";
-					break;
-		case RDS_TYPE_1B:
-					outfile << "1B";
-					break;
-		case RDS_TYPE_2A:
-					outfile << "2A";
-					break;
-		case RDS_TYPE_2B:
-					outfile << "2B";
-					break;
-		case RDS_TYPE_3A:
-					outfile << "3A";
-					break;
-		case RDS_TYPE_3B:
-					outfile << "3B";
-					break;
-		case RDS_TYPE_4A:
-					outfile << "4A";
-					break;
-		case RDS_TYPE_4B:
-					outfile << "4B";
-					break;
-		case RDS_TYPE_5A:
-					outfile << "5A";
-					break;
-		case RDS_TYPE_5B:
-					outfile << "5B";
-					break;		
-		case RDS_TYPE_6A:
-					outfile << "6A";
-					break;
-		case RDS_TYPE_6B:
-					outfile << "6B";
-					break;
-		case RDS_TYPE_7A:
-					outfile << "7A";
-					break;
-		case RDS_TYPE_7B:
-					outfile << "7B";
-					break;
-		case RDS_TYPE_8A:
-					outfile << "8A";
-					break;
-		case RDS_TYPE_8B:
-					outfile << "8B";
-					break;
-		case RDS_TYPE_9A:
-					outfile << "9A";
-					break;
-		case RDS_TYPE_9B:
-					outfile << "9B";
-					break;
-		case RDS_TYPE_10A:
-					outfile << "10A";
-					break;
-		case RDS_TYPE_10B:
-					outfile << "10B";
-					break;
-		case RDS_TYPE_11A:
-					outfile << "11A";
-					break;
-		case RDS_TYPE_11B:
-					outfile << "11B";
-					break;
-		case RDS_TYPE_12A:
-					outfile << "12A";
-					break;
-		case RDS_TYPE_12B:
-					outfile << "12B";
-					break;
-		case RDS_TYPE_13A:
-					outfile << "13A";
-					break;
-		case RDS_TYPE_13B:
-					outfile << "13B";
-					break;
-		case RDS_TYPE_14A:
-					outfile << "14A";
-					break;
-		case RDS_TYPE_14B:
-					outfile << "14B";
-					break;
-		case RDS_TYPE_15A:
-					outfile << "15A";
-					break;
-		case RDS_TYPE_15B:
-					outfile << "15B";
-					break;
-	}
-
-	outfile 
-		<< " [A=" << std::bitset<16>(registers[RDSA]) << ","
-		<< " [B=" << std::bitset<16>(registers[RDSB]) << ","
-		<< " [C=" << std::bitset<16>(registers[RDSC]) << ","
-		<< " [D=" << std::bitset<16>(registers[RDSD]) << ","
-		<< "]\n" << std::flush;
-
-	
 	char* szString;
 
     switch (group_type) {
@@ -287,6 +151,7 @@ void CRDSData::UpdateRDSText(WORD* registers)
 			m_ms = ((registers[RDSB] & 0x08) == 0x08)?true:false;
 			m_ta = ((registers[RDSB] & 0x10) == 0x10)?true:false;
 			m_tp = ((registers[RDSB] & 0x400) == 0x400)?true:false;
+			OutputDebugString("---");
 	        update_ps(addr+0, registers[RDSD] >> 8  );
 		    update_ps(addr+1, registers[RDSD] & 0xff);
 		    break;
@@ -315,8 +180,18 @@ void CRDSData::UpdateRDSText(WORD* registers)
 	    case RDS_TYPE_2A:
 	        addr = (registers[RDSB] & 0xf) * 4;
 			//m_tp = (registers[RDSB] & 0x400 == 0x400)?true:false;
-			//abflag = (registers[0xb] & 0x0010) >> 4;  // this is wrong
+			//abflag = (registers[RDSB] & 0x0010) >> 4;  // this is wrong
 			abflag = (registers[RDSB] & 0x10) == 0x10 ? true : false;
+			if(registers[RDSB] & 0x10)
+			{
+				abflag = true;
+				OutputDebugString("-A-");
+			}
+			else
+			{
+				abflag = false;
+				OutputDebugString("-B-");
+			}
 			update_rt(abflag, 4, addr, (BYTE*)&(registers[RDSC]), errorFlags);
 		    break;
 
@@ -371,6 +246,116 @@ void CRDSData::UpdateRDSText(WORD* registers)
 	        break;                
     }
 }
+
+void CRDSData::LogRDSDataStream(WORD* registers)
+{
+	char op[30];
+
+	switch (registers[RDSB] >> 11) {
+		case RDS_TYPE_0A:
+					OutputDebugString("-0A-");
+					break;
+		case RDS_TYPE_0B:
+					OutputDebugString("-0B-");
+					break;
+		case RDS_TYPE_1A:
+					OutputDebugString("-1A-");
+					break;
+		case RDS_TYPE_1B:
+					OutputDebugString("-1B-");
+					break;
+		case RDS_TYPE_2A:
+					OutputDebugString("-2A-");
+					break;
+		case RDS_TYPE_2B:
+					OutputDebugString("-2B-");
+					break;
+		case RDS_TYPE_3A:
+					OutputDebugString("-3A-");
+					break;
+		case RDS_TYPE_3B:
+					OutputDebugString("-3B-");
+					break;
+		case RDS_TYPE_4A:
+					OutputDebugString("-4A-");
+					break;
+		case RDS_TYPE_4B:
+					OutputDebugString("-4B-");
+					break;
+		case RDS_TYPE_5A:
+					OutputDebugString("-5A-");
+					break;
+		case RDS_TYPE_5B:
+					OutputDebugString("-5B-");
+					break;		
+		case RDS_TYPE_6A:
+					OutputDebugString("-6A-");
+					break;
+		case RDS_TYPE_6B:
+					OutputDebugString("-6B-");
+					break;
+		case RDS_TYPE_7A:
+					OutputDebugString("-7A-");
+					break;
+		case RDS_TYPE_7B:
+					OutputDebugString("-7B-");
+					break;
+		case RDS_TYPE_8A:
+					OutputDebugString("-8A-");
+					break;
+		case RDS_TYPE_8B:
+					OutputDebugString("-8B-");
+					break;
+		case RDS_TYPE_9A:
+					OutputDebugString("-9A-");
+					break;
+		case RDS_TYPE_9B:
+					OutputDebugString("-9B-");
+					break;
+		case RDS_TYPE_10A:
+					OutputDebugString("-10A-");
+					break;
+		case RDS_TYPE_10B:
+					OutputDebugString("-10B-");
+					break;
+		case RDS_TYPE_11A:
+					OutputDebugString("-11A-");
+					break;
+		case RDS_TYPE_11B:
+					OutputDebugString("-11B-");
+					break;
+		case RDS_TYPE_12A:
+					OutputDebugString("-12A-");
+					break;
+		case RDS_TYPE_12B:
+					OutputDebugString("-12B-");
+					break;
+		case RDS_TYPE_13A:
+					OutputDebugString("-13A-");
+					break;
+		case RDS_TYPE_13B:
+					OutputDebugString("-13B-");
+					break;
+		case RDS_TYPE_14A:
+					OutputDebugString("-14A-");
+					break;
+		case RDS_TYPE_14B:
+					OutputDebugString("-14B-");
+					break;
+		case RDS_TYPE_15A:
+					OutputDebugString("-15A-");
+					break;
+		case RDS_TYPE_15B:
+					OutputDebugString("-15B-");
+					break;
+	}
+
+	sprintf(op, "%04X %04X %04X %04X", (unsigned int)registers[RDSA], (unsigned int)registers[RDSB], 
+								(unsigned int)registers[RDSC], (unsigned int)registers[RDSD]);
+	OutputDebugString(op);
+
+}
+
 
 void CRDSData::SendToXPort(ULONG ulMsg, char* pszData, ULONG ulLength)
 {
@@ -486,6 +471,14 @@ void CRDSData::update_ps(BYTE addr, BYTE byte)
     BYTE i = 0;
 	BYTE textChange = 0; // indicates if the PS text is in transition
 	BYTE psComplete = 1; // indicates that the PS text is ready to be displayed
+	char op[2];
+
+	op[0] = byte;
+	op[1] = 0;
+	OutputDebugString(op);
+		
+	if(isprint(byte)==0) //non printable - exit
+		return;
 
 	if(m_psTmp0[addr] == byte)
 	{
@@ -598,7 +591,7 @@ void CRDSData::display_rt()
 
     // If the Radio Text in the high probability array is complete
     // copy it to the display array
-	if (rtComplete)
+	if (1)//rtComplete)
 	{
 		m_RDSText = "";
 
@@ -647,46 +640,30 @@ void CRDSData::update_rt(bool abFlag, BYTE count, BYTE addr, BYTE* byte, BYTE er
 {
     BYTE i;
 	BYTE textChange = 0; // indicates if the Radio Text is changing
+	char op[2];
 
-	// AB Flag business isn't the best way.
-
-	//if (abFlag != m_rtFlag && m_rtFlagValid)
-/*
-	if (abFlag != m_rtFlag)
+	if(m_OldabFlag != abFlag)
 	{
-		m_rtFlag = abFlag;    // Save the A/B flag
-		// If the A/B message flag changes, try to force a display
-		// by increasing the validation count of each byte
-		for (i=0;i<sizeof(m_rtCnt);i++)
+        //ab event - clear string
+		for(i=0;i<sizeof(m_rtTmp0);i++)
 		{
-			m_rtCnt[i]++;
-
-		}
-		display_rt();
-
-		// Wipe out the cached text 
-		for (i=0;i<sizeof(m_rtCnt);i++)
-		{
-			m_rtCnt[i] = 0;
-			m_rtTmp0[i] = 0;
-			m_rtTmp1[i] = 0;
+			m_rtTmp0[i] = m_rtTmp1[i] = m_rtTmp2[i] = ' ';
 		}
 	}
-	*/
-
-
-
-	//m_rtFlagValid = 1;    // Our copy of the A/B flag is now valid
-
+	m_OldabFlag = abFlag;
 
 	for(i=0;i<count;i++)
 	{
-		if(!byte[i])
+		if(isprint(byte[i])==0)
 		{
 			byte[i] = ' '; // translate nulls to spaces
 		}
+
+		op[0] = byte[i];
+		op[1] = 0;
+		OutputDebugString(op);
 		
-        // The new byte matches the high probability byte
+        /*// The new byte matches the high probability byte
 		if(m_rtTmp0[addr+i] == byte[i])
 		{
 			if(m_rtCnt[addr+i] < RT_VALIDATE_LIMIT)
@@ -728,21 +705,20 @@ void CRDSData::update_rt(bool abFlag, BYTE count, BYTE addr, BYTE* byte, BYTE er
             // The new byte doesn't match anything, put it in the
             // low probablity array.
 			m_rtTmp1[addr+i] = byte[i];
-		}
-	}
-
-	if(textChange)
-	{
-        // When the text is changing, decrement the count for all 
-        // characters to prevent displaying part of a message
-        // that is in transition.
-		for(i=0;i<sizeof(m_rtCnt);i++)
+		}*/
+		if(byte[i] == m_rtTmp1[addr+i]) 
+			m_rtTmp0[addr+i] = byte[i];
+		else if(byte[i] == m_rtTmp2[addr+i])
+			m_rtTmp0[addr+i] = byte[i];
+		else
 		{
-			if(m_rtCnt[i] > 1)
-			{
-				m_rtCnt[i]--;
-			}
+			if(m_rtTog)
+				m_rtTmp1[addr+i] = byte[i];
+			else
+				m_rtTmp2[addr+i] = byte[i];
+			m_rtTog = !m_rtTog;
 		}
+
 	}
 
     // Display the Radio Text
