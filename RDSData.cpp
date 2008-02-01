@@ -98,14 +98,10 @@ void CRDSData::UpdateRDSText(WORD* registers)
 	BYTE errorCount;
     BYTE errorFlags;
 	bool abflag;
-	char op[20];
 
 	// Check errors
 	errorCount = (registers[STATUSRSSI] & 0x0E00) >> 9;
 	errorFlags = registers[SYSCONFIG3] & 0xFF;
-
-	sprintf(op, "-Config:%04X", (unsigned int)registers[SYSCONFIG3]);
-	OutputDebugString(op);
 
 	if (errorCount < 4)
 	{
@@ -141,7 +137,7 @@ void CRDSData::UpdateRDSText(WORD* registers)
     // update pty code.  
     update_pty((registers[RDSB]>>5) & 0x1f); 
 
-	char* szString;
+	char szString[8];
 
     switch (group_type) {
 
@@ -216,14 +212,17 @@ void CRDSData::UpdateRDSText(WORD* registers)
 
 		// 8A, TMC
 	    case RDS_TYPE_8A:
-			//szString = (char*)registers;
-			//m_tp = (registers[RDSB] & 0x400 == 0x400)?true:false;
-			//SendToXPort(1, NULL, 0); // Pause real GPS before sending
-			//SendToXPort(2, "?", 1 ); // Send data
-			//SendToXPort(2, szString, 8 ); // Send data
-			//SendToXPort(2, "?", 1 ); // Send data
+			szString[0] = (char*)(registers[RDSA] >> 8) && 0xff;
+			szString[1] = (char*)registers[RDSA] && 0xff;
+			szString[2] = (char*)(registers[RDSA] >> 8) && 0xff;
+			szString[3] = (char*)registers[RDSA] && 0xff;
+			szString[4] = (char*)(registers[RDSA] >> 8) && 0xff; 
+			szString[5] = (char*)registers[RDSA] && 0xff;
+			szString[6] = (char*)(registers[RDSA] >> 8) && 0xff; 
+			szString[7] = (char*)registers[RDSA] && 0xff;
+			
+			SendToXPort(2, szString, 8 ); // Send data
 
-			//SendToXPort(0, NULL, 0); // Unpause real GPS when done sending
 		    break;
 
 		// 10A, Programme Type Name
@@ -359,7 +358,7 @@ void CRDSData::LogRDSDataStream(WORD* registers)
 
 void CRDSData::SendToXPort(ULONG ulMsg, char* pszData, ULONG ulLength)
 {
-     HWND hWnd = FindWindow( NULL, "XPortMsgWnd" );
+     HWND hWnd = FindWindow( NULL, "Silabs Test" );
      if( !hWnd ) return;
      COPYDATASTRUCT CD;
      CD.dwData = ulMsg;
@@ -468,262 +467,273 @@ void CRDSData::update_pty(BYTE current_pty)
 
 void CRDSData::update_ps(BYTE addr, BYTE byte)
 {
-    BYTE i = 0;
-	BYTE textChange = 0; // indicates if the PS text is in transition
-	BYTE psComplete = 1; // indicates that the PS text is ready to be displayed
-	char op[2];
+   BYTE i = 0;
+       BYTE textChange = 0; // indicates if the PS text is in transition
+       BYTE psComplete = 1; // indicates that the PS text is ready to be displayed
 
-	op[0] = byte;
-	op[1] = 0;
-	OutputDebugString(op);
-		
-	if(isprint(byte)==0) //non printable - exit
-		return;
+       if(m_psTmp0[addr] == byte)
+       {
+       // The new byte matches the high probability byte
+               if(m_psCnt[addr] < PS_VALIDATE_LIMIT)
+               {
+                       m_psCnt[addr]++;
+               }
+               else
+               {
+           // we have recieved this byte enough to max out our counter
+           // and push it into the low probability array as well
+                       m_psCnt[addr] = PS_VALIDATE_LIMIT;
+                       m_psTmp1[addr] = byte;
+               }
+       }
+       else if(m_psTmp1[addr] == byte)
+       {
+       // The new byte is a match with the low probability byte. Swap
+       // them, reset the counter and flag the text as in transition.
+       // Note that the counter for this character goes higher than
+       // the validation limit because it will get knocked down later
+               if(m_psCnt[addr] >= PS_VALIDATE_LIMIT)
+               {
+                       textChange = 1;
+               }
+               m_psCnt[addr] = PS_VALIDATE_LIMIT + 1;
+               m_psTmp1[addr] = m_psTmp0[addr];
+               m_psTmp0[addr] = byte;
+       }
+       else if(!m_psCnt[addr])
+       {
+       // The new byte is replacing an empty byte in the high
+       // proability array
+               m_psTmp0[addr] = byte;
+               m_psCnt[addr] = 1;
+       }
+       else
+       {
+       // The new byte doesn't match anything, put it in the
+       // low probablity array.
+               m_psTmp1[addr] = byte;
+       }
 
-	if(m_psTmp0[addr] == byte)
-	{
-        // The new byte matches the high probability byte
-		if(m_psCnt[addr] < validation_limit)
-		{
-			m_psCnt[addr]++;
-		}
-		else
-		{
-            // we have recieved this byte enough to max out our counter
-            // and push it into the low probability array as well
-			m_psCnt[addr] = validation_limit;
-			m_psTmp1[addr] = byte;
-		}
-	}
-	else if(m_psTmp1[addr] == byte)
-	{
-        // The new byte is a match with the low probability byte. Swap
-        // them, reset the counter and flag the text as in transition.
-        // Note that the counter for this character goes higher than
-        // the validation limit because it will get knocked down later
-		if(m_psCnt[addr] >= validation_limit)
-		{
-			textChange = 1;
-		}
-		m_psCnt[addr] = validation_limit + 1;
-		m_psTmp1[addr] = m_psTmp0[addr];
-		m_psTmp0[addr] = byte;
-	}
-	else if(!m_psCnt[addr])
-	{
-        // The new byte is replacing an empty byte in the high
-        // proability array
-		m_psTmp0[addr] = byte;
-		m_psCnt[addr] = 1;
-	}
-	else
-	{
-        // The new byte doesn't match anything, put it in the
-        // low probablity array.
-		m_psTmp1[addr] = byte;
-	}
+       if(textChange)
+       {
+       // When the text is changing, decrement the count for all
+       // characters to prevent displaying part of a message
+       // that is in transition.
+               for(i=0;i<sizeof(m_psCnt);i++)
+               {
+                       if(m_psCnt[i] > 1)
+                       {
+                               m_psCnt[i]--;
+                       }
+               }
+       }
 
-	if(textChange)
-	{
-        // When the text is changing, decrement the count for all 
-        // characters to prevent displaying part of a message
-        // that is in transition.
-		for(i=0;i<sizeof(m_psCnt);i++)
-		{
-			if(m_psCnt[i] > 1)
-			{
-				m_psCnt[i]--;
-			}
-		}
-	}
+   // The PS text is incomplete if any character in the high
+   // probability array has been seen fewer times than the
+   // validation limit.
+       for (i=0;i<sizeof(m_psCnt);i++)
+       {
+               if(m_psCnt[i] < PS_VALIDATE_LIMIT)
+               {
+                       psComplete = 0;
+                       break;
+               }
+       }
 
-    // The PS text is incomplete if any character in the high
-    // probability array has been seen fewer times than the
-    // validation limit.
-	for (i=0;i<sizeof(m_psCnt);i++)
-	{
-		if(m_psCnt[i] < validation_limit)
-		{
-			psComplete = 0;
-			break;
-		}
-	}
-
-    // If the PS text in the high probability array is complete
-    // copy it to the display array
-	if (psComplete)
-	{
-		m_RDSPS = "";
-		for (i=0;i<sizeof(m_psDisplay); i++)
-		{
-			m_psDisplay[i] = m_psTmp0[i];
-			m_RDSPS += m_psDisplay[i];
-		}
-		//std::map<WORD, std::string>::iterator it = m_psTable.find(m_piDisplay);
-		//if( it != m_psTable.end() ) {
-		//	m_psTable.erase(it);
-		//}
-		//m_psTable.insert(std::pair<WORD, std::string>(m_piDisplay, m_RDSPS));
-	}
+   // If the PS text in the high probability array is complete
+   // copy it to the display array
+       if (psComplete)
+       {
+               m_RDSPS = "";
+               for (i=0;i<sizeof(m_psDisplay); i++)
+               {
+                       m_psDisplay[i] = m_psTmp0[i];
+                       m_RDSPS += m_psDisplay[i];
+               }
+               //std::map<WORD, std::string>::iterator it = m_psTable.find(m_piDisplay);
+               //if( it != m_psTable.end() ) {
+               //      m_psTable.erase(it);
+               //}
+               //m_psTable.insert(std::pair<WORD, std::string>(m_piDisplay, m_RDSPS));
+       }
 }
 
 void CRDSData::display_rt()
 {
-    BYTE rtComplete = 1;
-	BYTE i;
+   BYTE rtComplete = 1;
+       BYTE i;
 
-    // The Radio Text is incomplete if any character in the high
-    // probability array has been seen fewer times than the
-    // validation limit.
-	for (i=0; i<sizeof(m_rtTmp0);i++)
-	{
-		if(m_rtCnt[i] < RT_VALIDATE_LIMIT)
-		{
-			rtComplete = 0;
-			break;
-		}
-		if(m_rtTmp0[i] == 0x0d)
-		{
-            // The array is shorter than the maximum allowed
-			break;
-		}
-	}
+   // The Radio Text is incomplete if any character in the high
+   // probability array has been seen fewer times than the
+   // validation limit.
+       for (i=0; i<sizeof(m_rtTmp0);i++)
+       {
+               if(m_rtCnt[i] < RT_VALIDATE_LIMIT)
+               {
+                       rtComplete = 0;
+                       break;
+               }
+               if(m_rtTmp0[i] == 0x0d)
+               {
+           // The array is shorter than the maximum allowed
+                       break;
+               }
+       }
 
-    // If the Radio Text in the high probability array is complete
-    // copy it to the display array
-	if (1)//rtComplete)
-	{
-		m_RDSText = "";
+   // If the Radio Text in the high probability array is complete
+   // copy it to the display array
+       if (rtComplete)
+       {
+               m_RDSText = "";
 
-		for (i=0; i < sizeof(m_rtDisplay); i += 2)
-		{
-			if ((m_rtDisplay[i] != 0x0d) && (m_rtDisplay[i+1] != 0x0d))
-			{
-				m_rtDisplay[i] = m_rtTmp0[i+1];
-				m_rtDisplay[i+1] = m_rtTmp0[i];
-			}
-			else
-			{
-				m_rtDisplay[i] = m_rtTmp0[i];
-				m_rtDisplay[i+1] = m_rtTmp0[i+1];
-			}
+               for (i=0; i < sizeof(m_rtDisplay); i += 2)
+               {
+                       if ((m_rtDisplay[i] != 0x0d) && (m_rtDisplay[i+1] != 0x0d))
+                       {
+                               m_rtDisplay[i] = m_rtTmp0[i+1];
+                               m_rtDisplay[i+1] = m_rtTmp0[i];
+                       }
+                       else
+                       {
+                               m_rtDisplay[i] = m_rtTmp0[i];
+                               m_rtDisplay[i+1] = m_rtTmp0[i+1];
+                       }
 
-			if (m_rtDisplay[i] != 0x0d)
-				m_RDSText += m_rtDisplay[i];
-			
-			if (m_rtDisplay[i+1] != 0x0d)
-				m_RDSText += m_rtDisplay[i+1];
+                       if (m_rtDisplay[i] != 0x0d)
+                               m_RDSText += m_rtDisplay[i];
+                       
+                       if (m_rtDisplay[i+1] != 0x0d)
+                               m_RDSText += m_rtDisplay[i+1];
 
-			if ((m_rtDisplay[i] == 0x0d) || (m_rtDisplay[i+1] == 0x0d))
-				i = sizeof(m_rtDisplay);
-		}
+                       if ((m_rtDisplay[i] == 0x0d) || (m_rtDisplay[i+1] == 0x0d))
+                               i = sizeof(m_rtDisplay);
+               }
 
-        // Wipe out everything after the end-of-message marker
-		for (i++;i<sizeof(m_rtDisplay);i++)
-		{
-			m_rtDisplay[i] = 0;
-			m_rtCnt[i]     = 0;
-			m_rtTmp0[i]    = 0;
-			m_rtTmp1[i]    = 0;
-		}
+       // Wipe out everything after the end-of-message marker
+               for (i++;i<sizeof(m_rtDisplay);i++)
+               {
+                       m_rtDisplay[i] = 0;
+                       m_rtCnt[i]     = 0;
+                       m_rtTmp0[i]    = 0;
+                       m_rtTmp1[i]    = 0;
+               }
 
-		//std::map<WORD, std::string>::iterator it = m_textTable.find(m_piDisplay);
-		//if( it != m_textTable.end() ) {
-		//	m_textTable.erase(it);
-		//}
-		//m_textTable.insert(std::pair<WORD, std::string>(m_piDisplay, m_RDSText));
-	}
+               //std::map<WORD, std::string>::iterator it = m_textTable.find(m_piDisplay);
+               //if( it != m_textTable.end() ) {
+               //      m_textTable.erase(it);
+               //}
+               //m_textTable.insert(std::pair<WORD, std::string>(m_piDisplay, m_RDSText));
+       }
 }
 
 
 void CRDSData::update_rt(bool abFlag, BYTE count, BYTE addr, BYTE* byte, BYTE errorFlags)
 {
-    BYTE i;
-	BYTE textChange = 0; // indicates if the Radio Text is changing
-	char op[2];
+   BYTE i;
+       BYTE textChange = 0; // indicates if the Radio Text is changing
 
-	if(m_OldabFlag != abFlag)
-	{
-        //ab event - clear string
-		for(i=0;i<sizeof(m_rtTmp0);i++)
-		{
-			m_rtTmp0[i] = m_rtTmp1[i] = m_rtTmp2[i] = ' ';
-		}
-	}
-	m_OldabFlag = abFlag;
+       // AB Flag business isn't the best way.
 
-	for(i=0;i<count;i++)
-	{
-		if(isprint(byte[i])==0)
-		{
-			byte[i] = ' '; // translate nulls to spaces
-		}
+       //if (abFlag != m_rtFlag && m_rtFlagValid)
+/*
+       if (abFlag != m_rtFlag)
+       {
+               m_rtFlag = abFlag;    // Save the A/B flag
+               // If the A/B message flag changes, try to force a display
+               // by increasing the validation count of each byte
+               for (i=0;i<sizeof(m_rtCnt);i++)
+               {
+                       m_rtCnt[i]++;
 
-		op[0] = byte[i];
-		op[1] = 0;
-		OutputDebugString(op);
-		
-        /*// The new byte matches the high probability byte
-		if(m_rtTmp0[addr+i] == byte[i])
-		{
-			if(m_rtCnt[addr+i] < RT_VALIDATE_LIMIT)
-			{
-				m_rtCnt[addr+i]++;
-			}
-			else
-			{
-                // we have recieved this byte enough to max out our counter
-                // and push it into the low probability array as well
-				m_rtCnt[addr+i] = RT_VALIDATE_LIMIT;
-				m_rtTmp1[addr+i] = byte[i];
-			}
-		}
-		else if(m_rtTmp1[addr+i] == byte[i])
-		{
+               }
+               display_rt();
 
-            // The new byte is a match with the low probability byte. Swap
-            // them, reset the counter and flag the text as in transition.
-            // Note that the counter for this character goes higher than
-            // the validation limit because it will get knocked down later
-			if(m_rtCnt[addr+i] >= RT_VALIDATE_LIMIT)
-			{
-				textChange = 1;
-			}
-			m_rtCnt[addr+i] = RT_VALIDATE_LIMIT + 1;
-			m_rtTmp1[addr+i] = m_rtTmp0[addr+i];
-			m_rtTmp0[addr+i] = byte[i];
-		}
-//		else if(!m_rtCnt[addr+i])
-//		{
+               // Wipe out the cached text
+               for (i=0;i<sizeof(m_rtCnt);i++)
+               {
+                       m_rtCnt[i] = 0;
+                       m_rtTmp0[i] = 0;
+                       m_rtTmp1[i] = 0;
+               }
+       }
+       */
+
+
+
+       //m_rtFlagValid = 1;    // Our copy of the A/B flag is now valid
+
+
+       for(i=0;i<count;i++)
+       {
+               if(!byte[i])
+               {
+                       byte[i] = ' '; // translate nulls to spaces
+               }
+               
+       // The new byte matches the high probability byte
+               if(m_rtTmp0[addr+i] == byte[i])
+               {
+                       if(m_rtCnt[addr+i] < RT_VALIDATE_LIMIT)
+                       {
+                               m_rtCnt[addr+i]++;
+                       }
+                       else
+                       {
+               // we have recieved this byte enough to max out our counter
+               // and push it into the low probability array as well
+                               m_rtCnt[addr+i] = RT_VALIDATE_LIMIT;
+                               m_rtTmp1[addr+i] = byte[i];
+                       }
+               }
+               else if(m_rtTmp1[addr+i] == byte[i])
+               {
+
+
+           // The new byte is a match with the low probability byte. Swap
+           // them, reset the counter and flag the text as in transition.
+           // Note that the counter for this character goes higher than
+           // the validation limit because it will get knocked down later
+                       if(m_rtCnt[addr+i] >= RT_VALIDATE_LIMIT)
+                       {
+                               textChange = 1;
+                       }
+                       m_rtCnt[addr+i] = RT_VALIDATE_LIMIT + 1;
+                       m_rtTmp1[addr+i] = m_rtTmp0[addr+i];
+                       m_rtTmp0[addr+i] = byte[i];
+               }
+//              else if(!m_rtCnt[addr+i])
+//              {
 //            // The new byte is replacing an empty byte in the high
 //            // proability array
-//			m_rtTmp0[addr+i] = byte[i];
-//			m_rtCnt[addr+i] = 1;
-//		}
-		else
-		{
-            // The new byte doesn't match anything, put it in the
-            // low probablity array.
-			m_rtTmp1[addr+i] = byte[i];
-		}*/
-		if(byte[i] == m_rtTmp1[addr+i]) 
-			m_rtTmp0[addr+i] = byte[i];
-		else if(byte[i] == m_rtTmp2[addr+i])
-			m_rtTmp0[addr+i] = byte[i];
-		else
-		{
-			if(m_rtTog)
-				m_rtTmp1[addr+i] = byte[i];
-			else
-				m_rtTmp2[addr+i] = byte[i];
-			m_rtTog = !m_rtTog;
-		}
+//                      m_rtTmp0[addr+i] = byte[i];
+//                      m_rtCnt[addr+i] = 1;
+//              }
+               else
+               {
+           // The new byte doesn't match anything, put it in the
+           // low probablity array.
+                       m_rtTmp1[addr+i] = byte[i];
+               }
+       }
 
-	}
+       if(textChange)
+       {
+       // When the text is changing, decrement the count for all
+       // characters to prevent displaying part of a message
+       // that is in transition.
+               for(i=0;i<sizeof(m_rtCnt);i++)
+               {
+                       if(m_rtCnt[i] > 1)
+                       {
+                               m_rtCnt[i]--;
+                       }
+               }
+       }
 
-    // Display the Radio Text
-	display_rt();
+   // Display the Radio Text
+       display_rt();
 }
+
 
 
 
