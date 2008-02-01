@@ -108,10 +108,19 @@ void CRDSData::UpdateRDSText(WORD* registers)
 		m_RdsBlocksValid += (4 - errorCount);
 	}
 
-    // Drop the data if there are any errors
+	// Drop the data if there are any errors
     if (errorCount)
 	{
 		return;
+	}
+
+	// work out the validation limit
+	if ((registers[STATUSRSSI] & STATUSRSSI_RSSI) > 35) {
+		validation_limit = 1;
+	} else if ((registers[STATUSRSSI] & STATUSRSSI_RSSI) > 31) {
+		validation_limit = 4;
+	} else {
+		validation_limit = 6;
 	}
 
 	LogRDSDataStream(registers);
@@ -474,7 +483,7 @@ void CRDSData::update_ps(BYTE addr, BYTE byte)
        if(m_psTmp0[addr] == byte)
        {
        // The new byte matches the high probability byte
-               if(m_psCnt[addr] < PS_VALIDATE_LIMIT)
+               if(m_psCnt[addr] < validation_limit)
                {
                        m_psCnt[addr]++;
                }
@@ -482,7 +491,7 @@ void CRDSData::update_ps(BYTE addr, BYTE byte)
                {
            // we have recieved this byte enough to max out our counter
            // and push it into the low probability array as well
-                       m_psCnt[addr] = PS_VALIDATE_LIMIT;
+                       m_psCnt[addr] = validation_limit;
                        m_psTmp1[addr] = byte;
                }
        }
@@ -492,11 +501,11 @@ void CRDSData::update_ps(BYTE addr, BYTE byte)
        // them, reset the counter and flag the text as in transition.
        // Note that the counter for this character goes higher than
        // the validation limit because it will get knocked down later
-               if(m_psCnt[addr] >= PS_VALIDATE_LIMIT)
+               if(m_psCnt[addr] >= validation_limit)
                {
                        textChange = 1;
                }
-               m_psCnt[addr] = PS_VALIDATE_LIMIT + 1;
+               m_psCnt[addr] = validation_limit + 1;
                m_psTmp1[addr] = m_psTmp0[addr];
                m_psTmp0[addr] = byte;
        }
@@ -533,7 +542,7 @@ void CRDSData::update_ps(BYTE addr, BYTE byte)
    // validation limit.
        for (i=0;i<sizeof(m_psCnt);i++)
        {
-               if(m_psCnt[i] < PS_VALIDATE_LIMIT)
+               if(m_psCnt[i] < validation_limit)
                {
                        psComplete = 0;
                        break;
