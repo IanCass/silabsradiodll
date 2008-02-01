@@ -1444,7 +1444,7 @@ bool CFMRadioDevice::SetRadioData(RadioData* radioData)
 			m_ScratchPage[i] = 0xFF;
 
 		//Clear the scratch page of used data to 00s
-		for (i = 0; i < SCRATCH_PAGE_USED_SIZE; i++)
+		for (int i = 0; i < SCRATCH_PAGE_USED_SIZE; i++)
 			m_ScratchPage[i] = 0x00;
 
 		//See GetRadioData for the format of the scratch page
