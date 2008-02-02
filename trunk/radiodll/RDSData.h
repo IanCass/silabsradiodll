@@ -15,6 +15,7 @@
 #include <map>
 #include <fstream>
 
+
 //Default text string for the RDS
 //#define DEFAULT_RDS_TEXT	"STAY IN TUNE WITH SILICON LABS FM TUNER TECHNOLOGY - "
 #define DEFAULT_RDS_TEXT	""
@@ -74,7 +75,7 @@ typedef struct rdsFifo_struct_tag {
 #define RT_VALIDATE_LIMIT 2
 #define RDS_PI_VALIDATE_LIMIT  4
 #define RDS_PTY_VALIDATE_LIMIT 4
-#define PS_VALIDATE_LIMIT 3
+#define PS_VALIDATE_LIMIT 4
 
 class CRDSData  
 {
@@ -85,14 +86,19 @@ class CRDSData
 	BYTE m_RdsWritePtr;
 	BYTE m_RdsFifoEmpty;
 	rdsFifo_struct	m_RdsFifo[RDS_FIFO_SIZE];
+	int validation_limit;
 
+	
 	// RDS Radio Text
     BYTE m_rtDisplay[64];   // Displayed Radio Text
 	BYTE m_rtTmp0[64];      // Temporary Radio Text (high probability)
 	BYTE m_rtTmp1[64];      // Temporary radio text (low probability)
+	BYTE m_rtTmp2[64];      // Temporary radio text (low probability)
 	BYTE m_rtCnt[64];       // Hit count of high probabiltiy radio text
 	bool m_rtFlag;          // Radio Text A/B flag
+	bool m_OldabFlag;
 	BYTE m_rtFlagValid;     // Radio Text A/B flag is valid
+	bool m_rtTog;
 
 	// RDS Program Service
 	BYTE m_psDisplay[8];    // Displayed Program Service text
@@ -107,6 +113,7 @@ class CRDSData
 	WORD m_RdsBlocksValid;		// Number of valid blocks received
 	WORD m_RdsBlocksTotal;		// Total number of blocks expected
 
+
 	// Debug information storing number of each kind of group received
 	WORD m_debug_group_counters[32];
 
@@ -118,6 +125,8 @@ class CRDSData
 	void update_ps(BYTE addr, BYTE byte);
 	void update_rt(bool abFlag, BYTE count, BYTE addr, BYTE* byte, BYTE errorFlags);
 	void display_rt();
+	void LogRDSDataStream(WORD* registers);
+
 
 public:
 	CRDSData();
