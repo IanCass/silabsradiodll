@@ -55,10 +55,12 @@ extern "C" {
 #define FMTUNERDATA_REPORT_SIZE	61
 
 //Device data
-#define FMRADIO_VID	0x10C4
-#define FMRADIO_PID	0x818A
-#define FMRADIO_VID2	0x10C5
-#define FMRADIO_PID2	0x819A
+#define SILABS_VID	0x10C4
+#define SILABS_PID	0x818A
+#define PCEAR_VID	0x10C5
+#define PCEAR_PID	0x819A
+#define ADSTECH_VID	0x06E1
+#define ADSTECH_PID	0xA155
 
 #define FMRADIO_SW_VERSION		7
 #define FMRADIO_HW_VERSION		1

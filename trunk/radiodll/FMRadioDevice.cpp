@@ -373,7 +373,8 @@ int CFMRadioDevice::GetAudioDeviceIndex()
 		if (waveInGetDevCaps(i, &waveInputCapabilities, sizeof(waveInputCapabilities)) == MMSYSERR_NOERROR)
 		{
 			//If FM Radio is found, open the radio immediately, this is our device
-			if (!strcmp(waveInputCapabilities.szPname, "FM Radio"))
+			if (!strcmp(waveInputCapabilities.szPname, "FM Radio")
+				|| !strcmp(waveInputCapabilities.szPname, "ADS InstantFM Music"))
 			{
 				//Set the current index to i, and set i to numWaveInputDevices to break
 				//out of the for loop
@@ -774,8 +775,10 @@ bool CFMRadioDevice::OpenFMRadioData()
 						if (HidD_GetAttributes(hHidDeviceHandle, &hidDeviceAttributes))
 						{
 							//Check that the VID and PID match
-							if (((hidDeviceAttributes.VendorID == FMRADIO_VID) && (hidDeviceAttributes.ProductID == FMRADIO_PID))
-								|| ((hidDeviceAttributes.VendorID == FMRADIO_VID2) && (hidDeviceAttributes.ProductID == FMRADIO_PID2)))
+							if (((hidDeviceAttributes.VendorID == SILABS_VID) && (hidDeviceAttributes.ProductID == SILABS_PID))
+								|| ((hidDeviceAttributes.VendorID == PCEAR_VID) && (hidDeviceAttributes.ProductID == PCEAR_PID))
+								|| ((hidDeviceAttributes.VendorID == ADSTECH_VID) && (hidDeviceAttributes.ProductID == ADSTECH_PID))
+								)
 							{
 								m_FMRadioDataHandle = hHidDeviceHandle;
 
