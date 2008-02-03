@@ -280,6 +280,32 @@ USBRADIO_API bool __stdcall VB_GetRDSPS (char szRetRDS[8], short *iRetSize)
 	}
 }
 
+USBRADIO_API bool __stdcall VB_GetRDSPIRegion (char szRetRDS[256], short *iRetSize)
+{
+	RDSData rds_data;
+
+	if (fmRadioDevice.GetRDSData(&rds_data)) {
+		*iRetSize=strlen(rds_data.rdsPIRegion.c_str());
+		strncpy(szRetRDS, rds_data.rdsPIRegion.c_str(), *iRetSize);
+		return true;
+	} else {
+		return false;
+	}
+}
+
+USBRADIO_API bool __stdcall VB_GetRDSPICountry (char szRetRDS[256], short *iRetSize)
+{
+	RDSData rds_data;
+
+	if (fmRadioDevice.GetRDSData(&rds_data)) {
+		*iRetSize=strlen(rds_data.rdsPICountry.c_str());
+		strncpy(szRetRDS, rds_data.rdsPICountry.c_str(), *iRetSize);
+		return true;
+	} else {
+		return false;
+	}
+}
+
 USBRADIO_API bool __stdcall VB_GetRDSPI (int *rdsPI)
 {
 	RDSData rds_data;
@@ -351,6 +377,33 @@ USBRADIO_API bool __stdcall VB_GetRDSTA (bool *res)
 	if (fmRadioDevice.GetRDSData(&rds_data)) {
 		*res = rds_data.rdsTA;
 		return true;
+	} else {
+		return false;
+	}
+}
+
+USBRADIO_API bool __stdcall VB_GetAFList (float* ary, int* arysize) {
+
+	RDSData rds_data;
+
+	if (*arysize < 1) return false;
+
+	if (fmRadioDevice.GetRDSData(&rds_data)) {
+
+		if (rds_data.AFMap.size() > 0) {
+	
+			std::map<float, float>::iterator iter; // our i for looping
+			int cnt = 0;
+			for(iter = rds_data.AFMap.begin(); iter != rds_data.AFMap.end(); iter++) {
+				ary[cnt] = iter->first;
+				cnt++;
+				if (cnt > *arysize - 1) break;
+			}
+			*arysize = rds_data.AFMap.size();
+			return true;
+		} else {
+			return false;
+		}
 	} else {
 		return false;
 	}

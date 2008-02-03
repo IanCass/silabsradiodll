@@ -46,6 +46,8 @@ void CRDSData::InitRDS()
 	m_tp = false;
 	m_ms = false;
 	m_ta = false;
+	m_piRegion = "";
+	m_piCountry = "";
 
     // Reset RDS variables
 	m_RdsDataAvailable = 0;
@@ -89,6 +91,9 @@ void CRDSData::InitRDS()
     {
         m_debug_group_counters[i] = 0;   
     }
+
+	// Clear down AF
+	AFMap.clear();
 }
 
 void CRDSData::UpdateRDSText(WORD* registers)
@@ -147,6 +152,8 @@ void CRDSData::UpdateRDSText(WORD* registers)
     update_pty((registers[RDSB]>>5) & 0x1f); 
 
 	char szString[8];
+	char op[30];
+	BYTE AF;
 
     switch (group_type) {
 
@@ -156,6 +163,30 @@ void CRDSData::UpdateRDSText(WORD* registers)
 			m_ms = ((registers[RDSB] & 0x08) == 0x08)?true:false;
 			m_ta = ((registers[RDSB] & 0x10) == 0x10)?true:false;
 			m_tp = ((registers[RDSB] & 0x400) == 0x400)?true:false;
+
+			// 1st AF byte
+			AF = (registers[RDSC] >> 8) & 0xff;
+			if (AF > 0 && EON < 205) {
+				float freq = ConvertAFFrequency(AF);
+				sprintf(op, "\nEON FREQ = %.1f mhz\n", freq);
+				OutputDebugString(op);
+				//AFMap.insert(std::pair<double, double>(freq, freq));
+				AFMap[freq] = freq;
+			}
+
+			// 2nd AF byte
+			AF = registers[RDSC] & 0xff;
+			if (AF > 0 && AF < 205) {
+				float freq = ConvertAFFrequency(AF);
+				sprintf(op, "\nEON FREQ = %.1f mhz\n", freq);
+				OutputDebugString(op);
+				//AFMap.insert(std::pair<double, double>(freq, freq));
+				AFMap[freq] = freq;
+			}
+
+			sprintf(op, "AF = %d\n", AFMap.size());
+			OutputDebugString (op);
+
 			OutputDebugString("---");
 	        update_ps(addr+0, registers[RDSD] >> 8  );
 		    update_ps(addr+1, registers[RDSD] & 0xff);
@@ -163,6 +194,7 @@ void CRDSData::UpdateRDSText(WORD* registers)
 		
 		// 0B, Basic tuning and switching info
 	    case RDS_TYPE_0B:
+			update_pi(registers[RDSC]);
 	        addr = (registers[RDSB]&0x3)*2;
 			m_ms = (registers[RDSB] & 0x08 == 0x08)?true:false;
 			m_ta = (registers[RDSB] & 0x10 == 0x10)?true:false;
@@ -178,6 +210,7 @@ void CRDSData::UpdateRDSText(WORD* registers)
 
 		// 1B, Program Item Number and Slow Labelling Codes
 	    case RDS_TYPE_1B:
+			update_pi(registers[RDSC]);
 			//m_tp = (registers[RDSB] & 0x400 == 0x400)?true:false;
 		    break;
 
@@ -214,21 +247,16 @@ void CRDSData::UpdateRDSText(WORD* registers)
 		//	update_rt(abflag, 2, addr, (BYTE*)&(registers[RDSD]), errorFlags);
 	        break;
 
-		// 4A, Clock
-	    case RDS_TYPE_4A:
-			//m_tp = (registers[RDSB] & 0x400 == 0x400)?true:false;
-		    break;
-
 		// 8A, TMC
 	    case RDS_TYPE_8A:
-			szString[0] = (char*)(registers[RDSA] >> 8) && 0xff;
-			szString[1] = (char*)registers[RDSA] && 0xff;
-			szString[2] = (char*)(registers[RDSA] >> 8) && 0xff;
-			szString[3] = (char*)registers[RDSA] && 0xff;
-			szString[4] = (char*)(registers[RDSA] >> 8) && 0xff; 
-			szString[5] = (char*)registers[RDSA] && 0xff;
-			szString[6] = (char*)(registers[RDSA] >> 8) && 0xff; 
-			szString[7] = (char*)registers[RDSA] && 0xff;
+			szString[0] = (char)((registers[RDSA] >> 8) & 0xff);
+			szString[1] = (char)registers[RDSA] & 0xff;
+			szString[2] = (char)((registers[RDSA] >> 8) & 0xff);
+			szString[3] = (char)registers[RDSA] & 0xff;
+			szString[4] = (char)((registers[RDSA] >> 8) & 0xff); 
+			szString[5] = (char)registers[RDSA] & 0xff;
+			szString[6] = (char)((registers[RDSA] >> 8) & 0xff); 
+			szString[7] = (char)registers[RDSA] & 0xff;
 			
 			SendToXPort(2, szString, 8 ); // Send data
 
@@ -253,6 +281,12 @@ void CRDSData::UpdateRDSText(WORD* registers)
 	    default:
 	        break;                
     }
+}
+
+float CRDSData::ConvertAFFrequency(BYTE freq) {
+	float basefreq = 87.5;
+	float offset = (int)freq / 10;
+	return basefreq + offset;
 }
 
 void CRDSData::LogRDSDataStream(WORD* registers)
@@ -413,6 +447,52 @@ void CRDSData::update_pi(WORD current_pi)
     if (rds_pi_validate_count > validation_limit)
 	{
         m_piDisplay = rds_pi_nonvalidated;
+		unsigned short m_prn = m_piDisplay & 0xff;
+		unsigned short m_area = (m_piDisplay >> 8) & 0xf;
+		unsigned short m_country = (m_piDisplay >> 12) & 0xf;
+
+		// Lookup area codes
+		switch (m_area) {
+			case 0x0:m_piRegion="Local";break;
+			case 0x1:m_piRegion="International";break;
+			case 0x2:m_piRegion="National";break;
+			case 0x3:m_piRegion="Supra-Regional";break;
+			case 0x4:m_piRegion="Region 1";break;
+			case 0x5:m_piRegion="Region 2";break;
+			case 0x6:m_piRegion="Region 3";break;
+			case 0x7:m_piRegion="Region 4";break;
+			case 0x8:m_piRegion="Region 5";break;
+			case 0x9:m_piRegion="Region 6";break;
+			case 0xa:m_piRegion="Region 7";break;
+			case 0xb:m_piRegion="Region 8";break;
+			case 0xc:m_piRegion="Region 9";break;
+			case 0xd:m_piRegion="Region 10";break;
+			case 0xe:m_piRegion="Region 11";break;
+			case 0xf:m_piRegion="Region 12";break;
+			default:m_piRegion="Unknown";break;
+		}
+
+		// Lookup country codes
+		switch (m_country) {
+
+			case 0x9: m_piCountry = "Albania/Denmark/Faroe/Latvia/Lichenstein/Slovenia"; break;
+			case 0x2: m_piCountry = "Algeria/Cyprus/Czech Republic/Estonia/Ireland"; break;
+			case 0x3: m_piCountry = "Andorra/Poland/San Marino/Turkey"; break;
+			case 0xa: m_piCountry = "Austria/Gilbralter/Iceland/Lebanon"; break;
+			case 0x8: m_piCountry = "Azores/Bulgaria/Madeira/Netherlands/Palestine/Portugal"; break;
+			case 0x6: m_piCountry = "Belgium/Finland/Syria/Ukraine"; break;
+			case 0xf: m_piCountry = "Belarus/Bosnia Herzegovina/Egypt/France/Norway"; break;
+			case 0xe: m_piCountry = "Canaries/Romania/Spain/Sweden"; break;
+			case 0xc: m_piCountry = "Croatia/Lithuania/Malta/United Kingdom"; break;
+			case 0xd: m_piCountry = "Germany/Libya/Yugoslavia"; break;
+			case 0x1: m_piCountry = "Germany/Greece/Moldova/Morocco"; break;
+			case 0xb: m_piCountry = "Hungary/Iraq/Monaco"; break;
+			case 0x4: m_piCountry = "Israel/Macedonia/Switzerland/Vatican"; break;
+			case 0x5: m_piCountry = "Italy/Jordan/Slovakia"; break;
+			case 0x7: m_piCountry = "Luxembourg/Russian Federation/Tunisia"; break;
+			default: m_piCountry = "Unknown";break;
+
+		}
 	}
 }
 
@@ -742,9 +822,6 @@ void CRDSData::update_rt(bool abFlag, BYTE count, BYTE addr, BYTE* byte, BYTE er
    // Display the Radio Text
        display_rt();
 }
-
-
-
 
 void CRDSData::ResetRDSText()
 {

@@ -10,7 +10,6 @@
 #include <string>
 #include <vector>
 #include <map>
-
 #ifdef _DEBUG
 #undef THIS_FILE
 static char THIS_FILE[]=__FILE__;
@@ -190,6 +189,8 @@ bool CFMRadioDevice::GetRDSData(RDSData* rdsData) {
 		// PI
 		if (rdsData->rdsPI != m_RDS.m_piDisplay) {
 			rdsData->rdsPI = m_RDS.m_piDisplay;
+			rdsData->rdsPIRegion = m_RDS.m_piRegion;
+			rdsData->rdsPICountry = m_RDS.m_piCountry;
 		}
 
 		// PTY
@@ -203,7 +204,8 @@ bool CFMRadioDevice::GetRDSData(RDSData* rdsData) {
 		rdsData->rdsTP = m_RDS.m_tp;
 		rdsData->rdsMS = m_RDS.m_ms;
 
-		
+		// AF
+		rdsData->AFMap = m_RDS.AFMap;
 
 		return true;
 	} else {
@@ -1161,6 +1163,7 @@ bool CFMRadioDevice::Seek(bool seekUp)
 	{
 		//If the write failed, set our seek bit back
 		m_Register[POWERCFG] &= ~POWERCFG_SEEK;
+
 	}
 
 	//Reopen the FM Radio Audio
