@@ -166,7 +166,7 @@ void CRDSData::UpdateRDSText(WORD* registers)
 
 			// 1st AF byte
 			AF = (registers[RDSC] >> 8) & 0xff;
-			if (AF > 0 && EON < 205) {
+			if (AF > 0 && AF < 205) {
 				float freq = ConvertAFFrequency(AF);
 				sprintf(op, "\nEON FREQ = %.1f mhz\n", freq);
 				OutputDebugString(op);
