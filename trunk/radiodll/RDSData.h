@@ -27,6 +27,8 @@ typedef struct rdsFifo_struct_tag {
 	WORD d;
 } rdsFifo_struct;
 
+typedef std::map<float, float> tAFMap;
+
 #define RDS_TYPE_0A     ( 0 * 2 + 0)
 #define RDS_TYPE_0B     ( 0 * 2 + 1)
 #define RDS_TYPE_1A     ( 1 * 2 + 0)
@@ -114,6 +116,7 @@ class CRDSData
 	WORD m_RdsBlocksTotal;		// Total number of blocks expected
 
 
+
 	// Debug information storing number of each kind of group received
 	WORD m_debug_group_counters[32];
 
@@ -126,6 +129,7 @@ class CRDSData
 	void update_rt(bool abFlag, BYTE count, BYTE addr, BYTE* byte, BYTE errorFlags);
 	void display_rt();
 	void LogRDSDataStream(WORD* registers);
+	float ConvertAFFrequency(BYTE freq);
 
 
 public:
@@ -139,6 +143,8 @@ public:
 	
 	// RDS Program Identifier
 	WORD m_piDisplay;              // Displayed Program Identifier
+	std::string m_piCountry;
+	std::string m_piRegion;
 
 	// RDS Program Type
 	BYTE m_ptyDisplay;             // Displayed Program Type
@@ -146,9 +152,7 @@ public:
 	bool m_tp;
 	bool m_ta;
 	bool m_ms;
-
-	std::map<WORD, std::string> m_psTable;
-	std::map<WORD, std::string> m_textTable;
+	tAFMap AFMap;				// Alternate Frequencies
 };
 
 #endif // !defined(AFX_RDSDATA_H__A14C0C6B_E19E_4099_AD73_0EC6272CB271__INCLUDED_)

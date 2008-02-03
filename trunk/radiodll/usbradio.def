@@ -29,3 +29,6 @@ VB_GetRDSTA
 VB_GetRDSMS
 VB_GetRadioRegisters
 VB_GetRDSRegisters
+VB_GetAFList
+VB_GetRDSPIRegion
+VB_GetRDSPICountry

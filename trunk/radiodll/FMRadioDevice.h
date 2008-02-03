@@ -267,6 +267,8 @@ typedef struct RadioData
 	BYTE bufferSize;
 } RadioData;
 
+typedef std::map<float, float> tAFMap;
+
 // This is also added to the header for the DLL, protect from multiple inclusions
 #ifndef _RDSDATA_
 //Structure that contains the RDS data
@@ -283,6 +285,10 @@ typedef struct RDSData
 	bool rdsTP;
 	bool rdsMS;
 	std::string rdsPTYString;
+	tAFMap AFMap;
+	std::string rdsPICountry;
+	std::string rdsPIRegion;
+
 } RDSData;
 #define _RDSDATA_
 #endif
