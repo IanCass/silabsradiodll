@@ -1,0 +1,55 @@
+<html>
+<body>
+<pre>
+<h1>Build Log</h1>
+<h3>
+--------------------Configuration: USBRadio - Win32 Other--------------------
+</h3>
+<h3>Command Lines</h3>
+Creating temporary file "C:\DOCUME~1\Daddy\LOCALS~1\Temp\RSP26CB.tmp" with contents
+[
+/nologo /MT /w /W0 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /D "_MBCS" /D "_USRDLL" /D "USBRADIO_EXPORTS" /FR"USBRadio___Win32_Other/" /Fp"USBRadio___Win32_Other/USBRadio.pch" /Yu"stdafx.h" /Fo"USBRadio___Win32_Other/" /Fd"USBRadio___Win32_Other/" /FD /c 
+"C:\tmp\rdstest\DLL Source Code\FMRadioDevice.cpp"
+"C:\tmp\rdstest\DLL Source Code\RDSData.cpp"
+"C:\tmp\rdstest\DLL Source Code\USBRadio.cpp"
+]
+Creating command line "cl.exe @C:\DOCUME~1\Daddy\LOCALS~1\Temp\RSP26CB.tmp" 
+Creating temporary file "C:\DOCUME~1\Daddy\LOCALS~1\Temp\RSP26CC.tmp" with contents
+[
+/nologo /MT /w /W0 /GX /O2 /D "WIN32" /D "NDEBUG" /D "_WINDOWS" /D "_MBCS" /D "_USRDLL" /D "USBRADIO_EXPORTS" /FR"USBRadio___Win32_Other/" /Fp"USBRadio___Win32_Other/USBRadio.pch" /Yc"stdafx.h" /Fo"USBRadio___Win32_Other/" /Fd"USBRadio___Win32_Other/" /FD /c 
+"C:\tmp\rdstest\DLL Source Code\StdAfx.cpp"
+]
+Creating command line "cl.exe @C:\DOCUME~1\Daddy\LOCALS~1\Temp\RSP26CC.tmp" 
+Creating temporary file "C:\DOCUME~1\Daddy\LOCALS~1\Temp\RSP26CD.tmp" with contents
+[
+winmm.lib /nologo /dll /incremental:no /pdb:"USBRadio___Win32_Other/USBRadio.pdb" /machine:I386 /def:"usbradio.def" /out:"USBRadio___Win32_Other/USBRadio.dll" /implib:"USBRadio___Win32_Other/USBRadio.lib" 
+".\USBRadio___Win32_Other\FMRadioDevice.obj"
+".\USBRadio___Win32_Other\RDSData.obj"
+".\USBRadio___Win32_Other\StdAfx.obj"
+".\USBRadio___Win32_Other\USBRadio.obj"
+]
+Creating command line "link.exe @C:\DOCUME~1\Daddy\LOCALS~1\Temp\RSP26CD.tmp"
+<h3>Output Window</h3>
+Compiling...
+StdAfx.cpp
+Compiling...
+FMRadioDevice.cpp
+C:\tmp\rdstest\DLL Source Code\FMRadioDevice.cpp(1668) : error C2065: 'ABOVE_NORMAL_PRIORITY_CLASS' : undeclared identifier
+C:\tmp\rdstest\DLL Source Code\FMRadioDevice.cpp(1673) : error C2065: 'CreateTimerQueueTimer' : undeclared identifier
+C:\tmp\rdstest\DLL Source Code\FMRadioDevice.cpp(1679) : error C2065: 'WT_EXECUTEINTIMERTHREAD' : undeclared identifier
+C:\tmp\rdstest\DLL Source Code\FMRadioDevice.cpp(1700) : error C2065: 'DeleteTimerQueueTimer' : undeclared identifier
+RDSData.cpp
+USBRadio.cpp
+Generating Code...
+Error executing cl.exe.
+Creating command line "bscmake.exe /nologo /o"USBRadio___Win32_Other/USBRadio.bsc"  ".\USBRadio___Win32_Other\StdAfx.sbr" ".\USBRadio___Win32_Other\FMRadioDevice.sbr" ".\USBRadio___Win32_Other\RDSData.sbr" ".\USBRadio___Win32_Other\USBRadio.sbr""
+Creating browse info file...
+<h3>Output Window</h3>
+
+
+
+<h3>Results</h3>
+USBRadio.dll - 4 error(s), 0 warning(s)
+</pre>
+</body>
+</html>
