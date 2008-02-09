@@ -44,13 +44,13 @@ OpenFMRadio (CFMRadioDevice* fmDevice)
 bool
 CloseFMRadio (CFMRadioDevice* fmDevice)
 {
-	if (fmDevice->DestroyRadioTimer() && fmDevice->DestroyRDSTimer()) {
-		fmDevice->CloseFMRadio();
-		return (true);
-	}
-
-	return (false);
+	fmDevice->DestroyRadioTimer();
+	fmDevice->DestroyRDSTimer();
+	fmDevice->CloseFMRadio();
+	return (true);
 }
+
+
 
 bool
 GetRDSInfo (CFMRadioDevice* fmDevice, RDSData* rdsData)
@@ -91,7 +91,7 @@ FMTune (long frequency)
 USBRADIO_API char* __stdcall
 GetModuleName ()
 {
-	return ("Silicon Labs USB FM Radio Reference Design (Appy v0.1)");
+	return ("Silicon Labs USB FM Radio Reference Design");
 }
 
 USBRADIO_API unsigned long __stdcall
@@ -138,7 +138,16 @@ TuneFreq (long frequency)
 USBRADIO_API void __stdcall
 SetMute (bool mute)
 {
-	fmRadioDevice.Mute(mute);
+	//fmRadioDevice.Mute(mute);
+	if (mute) {
+		fmRadioDevice.DestroyRadioTimer();
+		fmRadioDevice.CloseFMRadioAudio();
+		fmRadioDevice.CloseSoundCard();
+	} else {
+		fmRadioDevice.OpenFMRadioAudio();
+		fmRadioDevice.OpenSoundCard();
+		fmRadioDevice.CreateRadioTimer();
+	}
 }
 
 USBRADIO_API long __stdcall
@@ -237,9 +246,14 @@ USBRADIO_API bool __stdcall VB_GetModuleName (char szReturnModuleName[256], shor
 {
 
 	*iSize=strlen("Silicon Labs USB FM Radio Reference Design (Appy v0.1)");
-	strncpy(szReturnModuleName, "Silicon Labs USB FM Radio Reference Design (Appy v0.1)", *iSize);
+	strncpy(szReturnModuleName, "Silicon Labs USB FM Radio Reference Design", *iSize);
 
 	return true;
+}
+
+USBRADIO_API bool __stdcall VB_GetRDS (char szRetRDS[256], short *iRetSize)
+{
+	return VB_GetRDSText(szRetRDS, iRetSize);
 }
 
 USBRADIO_API bool __stdcall VB_GetRDSText (char szRetRDS[256], short *iRetSize)
@@ -439,6 +453,16 @@ USBRADIO_API bool __stdcall VB_GetRadioRegisters (char szRetBuf[256], short *iRe
 		return false;
 	}
 
+}
+
+USBRADIO_API bool __stdcall RegisterTAStart (char windowName[256], short dwData, char lpData[256])
+{
+	return fmRadioDevice.RTAStart(windowName, dwData, lpData);
+}
+
+USBRADIO_API bool __stdcall RegisterTAStop (char windowName[256], short dwData, char lpData[256])
+{
+	return fmRadioDevice.RTAStop(windowName, dwData, lpData);
 }
 
 USBRADIO_API bool __stdcall VB_GetRDSRegisters (char szRetBuf[256], short *iRetBufSize)

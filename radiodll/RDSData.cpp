@@ -24,6 +24,7 @@ static char THIS_FILE[]=__FILE__;
 CRDSData::CRDSData()
 {
 	//Initialize the RDS
+	TANowPlaying = false;
 	InitRDS();	
 
 	//outfile.open("c:\\log.txt", std::ofstream::app);
@@ -55,6 +56,7 @@ void CRDSData::InitRDS()
 	m_RdsIndicator     = 0;
 	m_RdsBlocksValid   = 0;
 	m_RdsBlocksTotal   = 0;
+	ta_validate_count = 0;
 
     // Clear RDS Fifo
     m_RdsFifoEmpty = 1;
@@ -94,6 +96,18 @@ void CRDSData::InitRDS()
 
 	// Clear down AF
 	AFMap.clear();
+
+	// Check to see if we were playing a TA
+	// If so, signal that it's no longer playing
+	if (TANowPlaying) {
+		if (!TACallbackStopCommand.empty() && !TACallbackStopWindowName.empty() != NULL && TACallbackStopDwData) {
+			SendToXPort((char *)TACallbackStopWindowName.c_str(), TACallbackStopDwData, (char*)TACallbackStopCommand.c_str(), TACallbackStopCommand.length());
+		}
+
+		// switch the indicator off
+		TANowPlaying = false;
+	}
+
 }
 
 void CRDSData::UpdateRDSText(WORD* registers)
@@ -154,6 +168,40 @@ void CRDSData::UpdateRDSText(WORD* registers)
 	char szString[8];
 	char op[30];
 	BYTE AF;
+
+	// check for traffic announcement program on this station
+	if (m_ta && m_tp) {
+		// We have a traffic announcement being played  now
+
+		// Lets delay signalling until we're sure it's not spurious
+		if (ta_validate_count > TA_VALIDATE_LIMIT) {
+			// We're now sure it's a genuine TA
+			// Signal TA if we need to
+			if (!TANowPlaying) {
+				if (!TACallbackStartCommand.empty() && !TACallbackStartWindowName.empty() != NULL && TACallbackStartDwData) {
+					SendToXPort((char *)TACallbackStartWindowName.c_str(), TACallbackStartDwData, (char*)TACallbackStartCommand.c_str(), TACallbackStartCommand.length());
+				}
+				TANowPlaying = true;
+			}
+
+		} else {
+			// increment the counter
+			ta_validate_count++;
+		}
+	} else {
+		// No traffic announcement being played now
+		// Signal TA if we need to
+		if (TANowPlaying) {
+			if (!TACallbackStopCommand.empty() && !TACallbackStopWindowName.empty() != NULL && TACallbackStopDwData) {
+				SendToXPort((char *)TACallbackStopWindowName.c_str(), TACallbackStopDwData, (char*)TACallbackStopCommand.c_str(), TACallbackStopCommand.length());
+			}
+
+			// switch the indicator off
+			TANowPlaying = false;
+		}
+		ta_validate_count = 0;
+	}
+		
 
     switch (group_type) {
 
@@ -258,7 +306,7 @@ void CRDSData::UpdateRDSText(WORD* registers)
 			szString[6] = (char)((registers[RDSA] >> 8) & 0xff); 
 			szString[7] = (char)registers[RDSA] & 0xff;
 			
-			SendToXPort(2, szString, 8 ); // Send data
+			//SendToXPort(2, szString, 8 ); // Send data
 
 		    break;
 
@@ -399,9 +447,9 @@ void CRDSData::LogRDSDataStream(WORD* registers)
 }
 
 
-void CRDSData::SendToXPort(ULONG ulMsg, char* pszData, ULONG ulLength)
+void CRDSData::SendToXPort(char* windowName, ULONG ulMsg, char* pszData, ULONG ulLength)
 {
-     HWND hWnd = FindWindow( NULL, "Silabs Test" );
+     HWND hWnd = FindWindow( NULL, windowName );
      if( !hWnd ) return;
      COPYDATASTRUCT CD;
      CD.dwData = ulMsg;

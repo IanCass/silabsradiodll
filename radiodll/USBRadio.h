@@ -60,4 +60,6 @@ USBRADIO_API bool __stdcall		VB_GetRDSPTY (bool *rdsMS);
 USBRADIO_API bool __stdcall     VB_GetRadioRegisters (char szRetBuf[256], short *iRetBufSize);
 USBRADIO_API bool __stdcall VB_GetAFList (float* ary, int* arysize);
 USBRADIO_API bool __stdcall     VB_GetRDSRegisters (char szRetBuf[256], short *iRetBufSize);
+USBRADIO_API bool __stdcall RegisterTAStart (char windowName[256], short dwData, char lpData[256]);
+
 
