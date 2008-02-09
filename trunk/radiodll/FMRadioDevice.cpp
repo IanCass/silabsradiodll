@@ -16,7 +16,7 @@ static char THIS_FILE[]=__FILE__;
 #define new DEBUG_NEW
 #endif
 
-#define RADIO_TIMER_PERIOD 30 /* Timer will fire every RADIO_TIMER_PERIOD ms */
+#define RADIO_TIMER_PERIOD 60 /* Timer will fire every RADIO_TIMER_PERIOD ms */
 
 static RDSData rdsTimerData;
 
@@ -166,6 +166,23 @@ bool CFMRadioDevice::CloseFMRadio()
 
 	return status;
 }
+
+bool CFMRadioDevice::RTAStart (char windowName[256], short dwData, char lpData[256])
+{	
+	m_RDS.TACallbackStartWindowName = windowName;
+	m_RDS.TACallbackStartDwData = dwData;
+	m_RDS.TACallbackStartCommand = lpData;
+	return true;
+}
+
+bool CFMRadioDevice::RTAStop (char windowName[256], short dwData, char lpData[256])
+{	
+	m_RDS.TACallbackStopWindowName = windowName;
+	m_RDS.TACallbackStopDwData = dwData;
+	m_RDS.TACallbackStopCommand = lpData;
+	return true;
+}
+
 
 bool CFMRadioDevice::GetRDSData(RDSData* rdsData) {
 	if (&rdsTimerData) {
@@ -1754,7 +1771,7 @@ bool CFMRadioDevice::DestroyRadioTimer()
 bool CFMRadioDevice::CreateRDSTimer()
 {
 	bool ret;
-	DWORD dwThreadId;
+	//DWORD dwThreadId;
 
 	if (h_rdsTimer) {
 		// Didn't destroy the old one first!
@@ -1775,7 +1792,8 @@ bool CFMRadioDevice::CreateRDSTimer()
     RDSThread, // pointer to thread function
     this,          // argument for new thread
     0,          // creation flags (immediate)
-    &dwThreadId // pointer to receive thread ID
+    //&dwThreadId // pointer to receive thread ID
+	NULL
 	);
 	
 	ret = true;

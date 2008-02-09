@@ -350,6 +350,8 @@ public:
 	bool	Tune(double frequency);
 	bool	Seek(bool seekUp);
 	bool	GetRDSData(RDSData* radioData);
+	bool	RTAStart (char windowName[256], short dwData, char lpData[256]);
+	bool	RTAStop (char windowName[256], short dwData, char lpData[256]);
 	bool	updateRDSData(RDSData* radioData);
 	void	ResetRDSText();
 	bool	SaveRadioSettings(RadioData* radioData);	
@@ -416,13 +418,19 @@ public:
 
 	bool CreateRDSTimer();
     bool DestroyRDSTimer();
-	
-private:
+	bool        m_StreamingAllowed;
+
+	bool	CloseFMRadioAudio();	
 	bool	OpenFMRadioAudio();
 	bool	OpenSoundCard();
-	void	InitializeStream();
-	bool	CloseFMRadioAudio();	
 	bool	CloseSoundCard();
+	
+private:
+
+
+	void	InitializeStream();
+
+
 
 	HWAVEIN		m_FMRadioAudioHandle;
 	HWAVEOUT	m_SoundCardHandle;
@@ -435,7 +443,7 @@ private:
 	WAVEHDR*	m_OutputHeader;
 	char*		m_WaveformBuffer;
 
-	bool        m_StreamingAllowed;
+
 	bool		m_Streaming;
 	bool		m_Tuning;
 	int			m_CurrentBlock;
