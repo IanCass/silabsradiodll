@@ -4,6 +4,7 @@ Option Explicit
 'Silabs USB FM Radio Reference Design API
 Public Declare Function HWInit Lib "USBRadio.dll" () As Boolean
 Public Declare Function HWDeInit Lib "USBRadio.dll" () As Boolean
+
 Public Declare Function FMTune Lib "USBRadio.dll" (ByVal frequency As Long) As Boolean
 Public Declare Function SeekStation Lib "USBRadio.dll" (ByVal SeekUp As Long) As Long
 Public Declare Function GetRDS Lib "USBRadio.dll" () As String
@@ -27,8 +28,38 @@ Public Declare Function VB_GetRDSMS Lib "USBRadio.dll" (ByRef sRDSMS As Boolean)
 Public Declare Function VB_GetRadioRegisters Lib "USBRadio.dll" (ByVal sRegBuffer As String, ByRef iRegLenght As Integer) As Boolean
 Public Declare Function VB_GetRDSRegisters Lib "USBRadio.dll" (ByVal sRegBuffer As String, ByRef iRegLenght As Integer) As Boolean
 
+Public Declare Sub VB_RegisterTMCCallback Lib "USBRadio.dll" (ByVal pFunc As Long)
+
+Public Declare Function VB_GetAFList Lib "USBRadio.dll" (ByRef ary As Single, ByRef size As Long) As Boolean
+Public Declare Function VB_GetRDSPICountry Lib "USBRadio.dll" (ByVal sRDSBuffer As String, ByRef iRDSLenght As Integer) As Boolean
+Public Declare Function VB_GetRDSPIRegion Lib "USBRadio.dll" (ByVal sRDSBuffer As String, ByRef iRDSLenght As Integer) As Boolean
+
+
+Public Declare Function RegisterTAStart Lib "USBRadio.dll" (ByVal windowName As String, ByVal dwData As Integer, ByVal lpData As String) As Boolean
+Public Declare Function RegisterTAStop Lib "USBRadio.dll" (ByVal windowName As String, ByVal dwData As Integer, ByVal lpData As String) As Boolean
+
+
 Global Const IntOffset = 65536
 Global Const MaxInt = 32767
+
+Public Function WVB_GetAFList() As Single()
+    Dim aflist() As Single
+    Dim arysize As Long
+    Dim LoopArr As Single
+    
+    ' Create the array
+    arysize = 25
+    ReDim aflist(arysize - 1) As Single
+
+    If (VB_GetAFList(aflist(0), arysize)) Then
+            ReDim Preserve aflist(arysize - 1)
+            For LoopArr = 0 To UBound(aflist)
+                Debug.Print "AFLIST = " & aflist(LoopArr)
+            Next LoopArr
+    End If
+    WVB_GetAFList = aflist
+End Function
+
 
 Public Function WVB_GetModuleName() As String
     
@@ -156,6 +187,32 @@ Public Function WVB_GetRDSPS() As String
     
 End Function
 
+Public Function WVB_GetRDSPIRegion() As String
+    
+    Dim sBuffer    As String * 256
+    Dim iBufferLen As Integer
+    Dim lRet       As Long
+    
+    If (VB_GetRDSPIRegion(sBuffer, iBufferLen)) Then
+        Debug.Print "REGION = " & Left(sBuffer, iBufferLen)
+           WVB_GetRDSPIRegion = Left(sBuffer, iBufferLen)
+    End If
+    
+End Function
+
+Public Function WVB_GetRDSPICountry() As String
+    
+    Dim sBuffer    As String * 256
+    Dim iBufferLen As Integer
+    Dim lRet       As Long
+    
+    If (VB_GetRDSPICountry(sBuffer, iBufferLen)) Then
+            Debug.Print "COUNTRY = " & Left(sBuffer, iBufferLen)
+            WVB_GetRDSPICountry = Left(sBuffer, iBufferLen)
+    End If
+    
+End Function
+
 Public Function WVB_GetRDSText() As String
     
     Dim sBuffer    As String * 256
@@ -202,6 +259,20 @@ Public Function SInt2UInt(ByVal value As Variant) As Long
     End If
 
 End Function
+
+
+'Sub TMCCallback(ByVal a As Integer, ByVal b As Integer, ByVal c As Integer, ByVal d As Integer, ByVal e As Integer, ByVal f As Integer, ByVal g As Integer, ByVal H As Integer)
+'    On Error GoTo localhandler
+'    Debug.Print "?" & Chr(a) & Chr(b) & Chr(c) & Chr(d) & Chr(e) & Chr(f) & Chr(g) & Chr(H) & "?"
+'    Exit Sub
+'
+'    frmMain.VSPortAx1.WriteStr "?" & Chr(a) & Chr(b) & Chr(c) & Chr(d) & Chr(e) & Chr(f) & Chr(g) & Chr(H) & "?"
+'
+'localhandler:
+'    Debug.Print "ERROR SENDING TO SOCKET"
+'
+'End Sub
+
 
 
 

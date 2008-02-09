@@ -6,28 +6,39 @@ Begin VB.Form frmMain
    ClientHeight    =   7215
    ClientLeft      =   45
    ClientTop       =   435
-   ClientWidth     =   11895
+   ClientWidth     =   11100
    LinkTopic       =   "Form1"
    MaxButton       =   0   'False
    MinButton       =   0   'False
    ScaleHeight     =   7215
-   ScaleWidth      =   11895
+   ScaleWidth      =   11100
    ShowInTaskbar   =   0   'False
    StartUpPosition =   3  'Windows Default
+   Begin VB.PictureBox Traffic 
+      AutoSize        =   -1  'True
+      Height          =   2775
+      Left            =   8040
+      Picture         =   "frmMain.frx":0000
+      ScaleHeight     =   2715
+      ScaleWidth      =   2850
+      TabIndex        =   38
+      Top             =   120
+      Visible         =   0   'False
+      Width           =   2910
+   End
    Begin VB.CheckBox Check2 
       Caption         =   "Mute"
       Height          =   615
       Left            =   6120
-      TabIndex        =   31
+      TabIndex        =   29
       Top             =   2280
       Width           =   1335
    End
    Begin VB.Frame Frame7 
       Caption         =   "Alternate Frequencies"
-      Enabled         =   0   'False
       Height          =   2535
       Left            =   3795
-      TabIndex        =   27
+      TabIndex        =   25
       Top             =   330
       Width           =   2130
       Begin VB.CommandButton cmdTune 
@@ -36,7 +47,7 @@ Begin VB.Form frmMain
          Height          =   420
          Index           =   4
          Left            =   90
-         TabIndex        =   29
+         TabIndex        =   27
          Top             =   2025
          Width           =   1875
       End
@@ -52,10 +63,10 @@ Begin VB.Form frmMain
             Strikethrough   =   0   'False
          EndProperty
          Height          =   1380
-         ItemData        =   "frmMain.frx":0000
+         ItemData        =   "frmMain.frx":1A8CA
          Left            =   120
-         List            =   "frmMain.frx":0002
-         TabIndex        =   28
+         List            =   "frmMain.frx":1A8CC
+         TabIndex        =   26
          Top             =   240
          Width           =   1845
       End
@@ -65,7 +76,7 @@ Begin VB.Form frmMain
       Enabled         =   0   'False
       Height          =   1710
       Left            =   7320
-      TabIndex        =   26
+      TabIndex        =   24
       Top             =   4200
       Width           =   3705
    End
@@ -73,14 +84,14 @@ Begin VB.Form frmMain
       Caption         =   "FM Radio"
       Height          =   2640
       Left            =   315
-      TabIndex        =   16
+      TabIndex        =   14
       Top             =   210
       Width           =   3315
       Begin VB.CommandButton cmdOnOff 
          Caption         =   "Turn ON"
          Height          =   510
          Left            =   2295
-         TabIndex        =   30
+         TabIndex        =   28
          Tag             =   "0"
          Top             =   585
          Width           =   735
@@ -90,7 +101,7 @@ Begin VB.Form frmMain
          Height          =   420
          Index           =   0
          Left            =   90
-         TabIndex        =   20
+         TabIndex        =   18
          Top             =   2070
          Width           =   700
       End
@@ -99,7 +110,7 @@ Begin VB.Form frmMain
          Height          =   420
          Index           =   1
          Left            =   855
-         TabIndex        =   19
+         TabIndex        =   17
          Top             =   2070
          Width           =   700
       End
@@ -108,7 +119,7 @@ Begin VB.Form frmMain
          Height          =   420
          Index           =   2
          Left            =   1665
-         TabIndex        =   18
+         TabIndex        =   16
          Top             =   2070
          Width           =   700
       End
@@ -117,14 +128,14 @@ Begin VB.Form frmMain
          Height          =   420
          Index           =   3
          Left            =   2445
-         TabIndex        =   17
+         TabIndex        =   15
          Top             =   2070
          Width           =   700
       End
       Begin MSComctlLib.ProgressBar bpSignal 
          Height          =   480
          Left            =   75
-         TabIndex        =   21
+         TabIndex        =   19
          Top             =   1485
          Width           =   2400
          _ExtentX        =   4233
@@ -139,7 +150,7 @@ Begin VB.Form frmMain
          Height          =   195
          Index           =   0
          Left            =   105
-         TabIndex        =   25
+         TabIndex        =   23
          Top             =   1245
          Width           =   480
       End
@@ -158,7 +169,7 @@ Begin VB.Form frmMain
          EndProperty
          Height          =   630
          Left            =   165
-         TabIndex        =   24
+         TabIndex        =   22
          Top             =   510
          Width           =   1725
       End
@@ -177,7 +188,7 @@ Begin VB.Form frmMain
          EndProperty
          Height          =   420
          Left            =   2580
-         TabIndex        =   23
+         TabIndex        =   21
          Top             =   1530
          Width           =   600
       End
@@ -187,7 +198,7 @@ Begin VB.Form frmMain
          Height          =   195
          Index           =   1
          Left            =   180
-         TabIndex        =   22
+         TabIndex        =   20
          Top             =   270
          Width           =   810
       End
@@ -198,10 +209,9 @@ Begin VB.Form frmMain
       Left            =   315
       TabIndex        =   9
       Top             =   2955
-      Width           =   6750
+      Width           =   10710
       Begin VB.Label lblCoverage 
          BorderStyle     =   1  'Fixed Single
-         Enabled         =   0   'False
          BeginProperty Font 
             Name            =   "Arial"
             Size            =   14.25
@@ -213,14 +223,13 @@ Begin VB.Form frmMain
          EndProperty
          ForeColor       =   &H00000000&
          Height          =   390
-         Left            =   1980
-         TabIndex        =   15
+         Left            =   7080
+         TabIndex        =   13
          Top             =   540
          Width           =   3390
       End
       Begin VB.Label lblCountry 
          BorderStyle     =   1  'Fixed Single
-         Enabled         =   0   'False
          BeginProperty Font 
             Name            =   "Arial"
             Size            =   14.25
@@ -230,64 +239,32 @@ Begin VB.Form frmMain
             Italic          =   0   'False
             Strikethrough   =   0   'False
          EndProperty
-         ForeColor       =   &H00808080&
+         ForeColor       =   &H00000000&
          Height          =   390
          Left            =   285
-         TabIndex        =   14
+         TabIndex        =   12
          Top             =   540
-         Width           =   1530
+         Width           =   6450
       End
       Begin VB.Label lbl 
          AutoSize        =   -1  'True
          Caption         =   "Country:"
-         Enabled         =   0   'False
          Height          =   195
          Index           =   11
          Left            =   300
-         TabIndex        =   13
+         TabIndex        =   11
          Top             =   330
          Width           =   585
       End
       Begin VB.Label lbl 
          AutoSize        =   -1  'True
          Caption         =   "Coverage:"
-         Enabled         =   0   'False
          Height          =   195
          Index           =   10
-         Left            =   2010
-         TabIndex        =   12
+         Left            =   7080
+         TabIndex        =   10
          Top             =   270
          Width           =   735
-      End
-      Begin VB.Label lbl 
-         AutoSize        =   -1  'True
-         Caption         =   "Interpretation:"
-         Height          =   195
-         Index           =   9
-         Left            =   5520
-         TabIndex        =   11
-         Top             =   330
-         Width           =   975
-      End
-      Begin VB.Label lblStereo 
-         AutoSize        =   -1  'True
-         BorderStyle     =   1  'Fixed Single
-         Caption         =   "Stereo"
-         BeginProperty Font 
-            Name            =   "Arial"
-            Size            =   14.25
-            Charset         =   0
-            Weight          =   700
-            Underline       =   0   'False
-            Italic          =   0   'False
-            Strikethrough   =   0   'False
-         EndProperty
-         ForeColor       =   &H00808080&
-         Height          =   390
-         Left            =   5520
-         TabIndex        =   10
-         Top             =   540
-         Width           =   975
       End
    End
    Begin VB.Frame Frame2 
@@ -296,7 +273,7 @@ Begin VB.Form frmMain
       Left            =   285
       TabIndex        =   7
       Top             =   5970
-      Width           =   11415
+      Width           =   10695
       Begin VB.Label lblRadioTextA 
          BorderStyle     =   1  'Fixed Single
          BeginProperty Font 
@@ -324,11 +301,51 @@ Begin VB.Form frmMain
       Width           =   6735
       Begin VB.Label lbl 
          AutoSize        =   -1  'True
+         Caption         =   "Flags:"
+         Height          =   195
+         Index           =   3
+         Left            =   3480
+         TabIndex        =   37
+         Top             =   240
+         Width           =   420
+      End
+      Begin VB.Label lblStereo 
+         AutoSize        =   -1  'True
+         BorderStyle     =   1  'Fixed Single
+         Caption         =   "Stereo"
+         BeginProperty Font 
+            Name            =   "Arial"
+            Size            =   14.25
+            Charset         =   0
+            Weight          =   700
+            Underline       =   0   'False
+            Italic          =   0   'False
+            Strikethrough   =   0   'False
+         EndProperty
+         ForeColor       =   &H00808080&
+         Height          =   390
+         Left            =   5520
+         TabIndex        =   35
+         Top             =   450
+         Width           =   975
+      End
+      Begin VB.Label lbl 
+         AutoSize        =   -1  'True
+         Caption         =   "Interpretation:"
+         Height          =   195
+         Index           =   9
+         Left            =   5520
+         TabIndex        =   34
+         Top             =   240
+         Width           =   975
+      End
+      Begin VB.Label lbl 
+         AutoSize        =   -1  'True
          Caption         =   "PS:"
          Height          =   195
          Index           =   5
          Left            =   120
-         TabIndex        =   35
+         TabIndex        =   33
          Top             =   480
          Width           =   255
       End
@@ -338,7 +355,7 @@ Begin VB.Form frmMain
          Height          =   195
          Index           =   6
          Left            =   135
-         TabIndex        =   34
+         TabIndex        =   32
          Top             =   1170
          Width           =   195
       End
@@ -355,7 +372,7 @@ Begin VB.Form frmMain
          EndProperty
          Height          =   420
          Left            =   480
-         TabIndex        =   33
+         TabIndex        =   31
          Top             =   480
          Width           =   2085
       End
@@ -373,7 +390,7 @@ Begin VB.Form frmMain
          EndProperty
          Height          =   420
          Left            =   480
-         TabIndex        =   32
+         TabIndex        =   30
          Top             =   1080
          Width           =   1650
       End
@@ -436,9 +453,9 @@ Begin VB.Form frmMain
          EndProperty
          ForeColor       =   &H00808080&
          Height          =   390
-         Left            =   3360
+         Left            =   3480
          TabIndex        =   3
-         Top             =   375
+         Top             =   480
          Width           =   450
       End
       Begin VB.Label lblTA 
@@ -455,9 +472,9 @@ Begin VB.Form frmMain
          EndProperty
          ForeColor       =   &H00808080&
          Height          =   390
-         Left            =   3960
+         Left            =   4080
          TabIndex        =   2
-         Top             =   360
+         Top             =   480
          Width           =   450
       End
       Begin VB.Label lblMS 
@@ -474,17 +491,26 @@ Begin VB.Form frmMain
          EndProperty
          ForeColor       =   &H00808080&
          Height          =   390
-         Left            =   4560
+         Left            =   4680
          TabIndex        =   1
-         Top             =   360
+         Top             =   480
          Width           =   510
       End
    End
    Begin VB.Timer tmrUpdate 
       Enabled         =   0   'False
       Interval        =   100
-      Left            =   11355
-      Top             =   150
+      Left            =   11280
+      Top             =   240
+   End
+   Begin VB.Label lbl 
+      AutoSize        =   -1  'True
+      Height          =   195
+      Index           =   2
+      Left            =   4560
+      TabIndex        =   36
+      Top             =   4440
+      Width           =   45
    End
 End
 Attribute VB_Name = "frmMain"
@@ -497,6 +523,7 @@ Option Explicit
 Dim lGloRRegs(15)   As Long
 Dim lGloFreq        As Long
 Dim bGloRadioON     As Boolean
+Dim bGloAudioON     As Boolean
 Dim bGloFreqChanged As Boolean
 Dim bRet            As Boolean
 
@@ -517,6 +544,10 @@ Private Sub cmdOnOff_Click()
         bGloRadioON = True
         bGloFreqChanged = True
         tmrUpdate_Timer
+        'Call VB_RegisterTMCCallback(AddressOf TMCCallback)
+        'VSPortAx1.CreatePort "COM9"
+
+        
       Else
         bRet = HWDeInit()
         tmrUpdate.Enabled = False
@@ -580,12 +611,23 @@ Public Function memset(ByRef byArray() As Byte, iAsc As Integer) As Boolean
 
 End Function
 
-Private Sub Command1_Click()
-FMTune (98800)
-End Sub
+
 
 Private Sub Form_Load()
     bGloRadioON = False
+    bGloAudioON = True
+    Dim ret As Boolean
+        
+    gHW = Me.hwnd
+    Hook
+    Me.Caption = "Silabs Test"
+    Me.Show
+    'Label1.Caption = Hex$(gHW)
+    ret = RegisterTAStart("Silabs Test", 2, "TASTART")
+    ret = RegisterTAStop("Silabs Test", 2, "TASTOP")
+    
+
+    
 End Sub
 
 Private Sub Form_Unload(Cancel As Integer)
@@ -595,9 +637,11 @@ Private Sub Form_Unload(Cancel As Integer)
 End Sub
 
 
-Private Sub Label1_Click()
 
-End Sub
+
+
+
+
 
 Private Sub tmrUpdate_Timer()
 
@@ -608,19 +652,20 @@ Private Sub tmrUpdate_Timer()
         
     '---Always Upadated
     'PS
-    'lblPS = RDSData.sPSName
     lblPS = WVB_GetRDSPS()
+    
+
     
     'RadioText
     lblRadioTextA = WVB_GetRDSText()
-    'lblRadioTextA = RDSData.sRadioTextA
-    'lblRadioTextB = RDSData.sRadioTextB
+
     
     'PTY
-    'lblPTYCode = RDSData.iPTYCode
     lblPTYCode = WVB_GetRDSPTY()
     lblPTYDescr = WVB_GetRDSPTYString()
-    'lblPTYDescr = DecodePTY(WVB_GetRDSPTY())
+
+    
+
    
     '---(every second or when frequence change)
     If (Timer - lLast1SecUpdate > 1) Or bGloFreqChanged Then
@@ -643,20 +688,34 @@ Private Sub tmrUpdate_Timer()
   
     '---(every 4 seconds or when frequence change)
     If (Timer - lLast4SecUpdate > 4) Or bGloFreqChanged Then
-    '
-    '    'Alternate Frequencies
-    '    Dim iTemp As Integer
-    '    iTemp = lstAF.ListIndex
-    '    lstAF.Clear
-    '    For iCnt = 1 To UBound(RDSData.lAltFreq)
-    '        If RDSData.lAltFreq(iCnt) <> 0 Then
-    '            lstAF.AddItem Round(RDSData.lAltFreq(iCnt) / 1000, 2)
-    '        End If
-    '    Next iCnt
-    '    If lstAF.ListCount >= iTemp + 1 Then
-    '        lstAF.ListIndex = iTemp
-    '    End If
-    '
+
+    
+        'Alternate Frequencies
+        Dim aflist() As Single
+        aflist = WVB_GetAFList()
+        
+        
+        Dim iTemp As Integer
+        iTemp = lstAF.ListIndex
+        lstAF.Clear
+        For iCnt = 0 To UBound(aflist)
+            If aflist(iCnt) <> 0 Then
+                lstAF.AddItem aflist(iCnt)
+            End If
+        Next iCnt
+        
+        If lstAF.ListCount >= iTemp + 1 Then
+            lstAF.ListIndex = iTemp
+        End If
+        
+        If (UBound(aflist) > 0) Then
+            lstAF.Enabled = True
+            cmdTune(4).Enabled = True
+        Else
+            lstAF.Enabled = False
+             cmdTune(4).Enabled = False
+        End If
+    
     '    'Group Detected
     '    For iCnt = 0 To 15
     '        picGroupA(iCnt).BackColor = IIf(RDSData.byGroupA(iCnt), &HFF00&, &H8000&)
@@ -675,9 +734,9 @@ Private Sub tmrUpdate_Timer()
     '    lblTime = RDSData.sTime
     '    lblUTC = RDSData.sUTC
     '
-    '    'PI: Country/Coverage
-    '    lblCountry = RDSData.sCountryDesc
-    '    lblCoverage = RDSData.sCoverDesc
+        'PI: Country/Coverage
+        lblCountry = WVB_GetRDSPICountry()
+        lblCoverage = WVB_GetRDSPIRegion()
 
         
     'RDSData.sCoverDesc = ""
@@ -742,81 +801,7 @@ Public Function Hex2Bin(sHex As String, iReg As Integer) As String
     Hex2Bin = sRet
 End Function
 
-Public Function DecodePTY(iCode As Integer)
 
-    Select Case iCode
-        Case 0: DecodePTY = ""
-        Case 1: DecodePTY = "News"
-        Case 2: DecodePTY = "Current Affairs"
-        Case 3: DecodePTY = "Information"
-        Case 4: DecodePTY = "Sport"
-        Case 5: DecodePTY = "Education"
-        Case 6: DecodePTY = "Drama"
-        Case 7: DecodePTY = "Culture"
-        Case 8: DecodePTY = "Science"
-        Case 9: DecodePTY = "Varied"
-        Case 10: DecodePTY = "Pop Music"
-        Case 11: DecodePTY = "Rock Music"
-        Case 12: DecodePTY = "Easy Listening"
-        Case 13: DecodePTY = "Light Classic Music"
-        Case 14: DecodePTY = "Serious Classic Music"
-        Case 15: DecodePTY = "Other Music"
-        Case 16: DecodePTY = "Weather & Metr"
-        Case 17: DecodePTY = "Finance"
-        Case 18: DecodePTY = "Children's Progs"
-        Case 19: DecodePTY = "Social Affairs"
-        Case 20: DecodePTY = "Religion"
-        Case 21: DecodePTY = "Phone In"
-        Case 22: DecodePTY = "Travel & Touring"
-        Case 23: DecodePTY = "Leisure & Hobby"
-        Case 24: DecodePTY = "Jazz Music"
-        Case 25: DecodePTY = "Country Music"
-        Case 26: DecodePTY = "National Music"
-        Case 27: DecodePTY = "Oldies Music"
-        Case 28: DecodePTY = "Folk Music"
-        Case 29: DecodePTY = "Documentary"
-        Case 30: DecodePTY = "Alarm Test"
-        Case 31: DecodePTY = "Alarm - Alarm !"
-    End Select
-    
-End Function
-Public Function DecodePICountryCode(iCode As Integer)
-
-    Select Case iCode
-        Case 0: DecodePICountryCode = ""
-        Case 1: DecodePICountryCode = "News"
-        Case 2: DecodePICountryCode = "Current Affairs"
-        Case 3: DecodePICountryCode = "Information"
-        Case 4: DecodePICountryCode = "Sport"
-        Case 5: DecodePICountryCode = "Education"
-        Case 6: DecodePICountryCode = "Drama"
-        Case 7: DecodePICountryCode = "Culture"
-        Case 8: DecodePICountryCode = "Science"
-        Case 9: DecodePICountryCode = "Varied"
-        Case 10: DecodePICountryCode = "Pop Music"
-        Case 11: DecodePICountryCode = "Rock Music"
-        Case 12: DecodePICountryCode = "Easy Listening"
-        Case 13: DecodePICountryCode = "Light Classic Music"
-        Case 14: DecodePICountryCode = "Serious Classic Music"
-        Case 15: DecodePICountryCode = "Other Music"
-        Case 16: DecodePICountryCode = "Weather & Metr"
-        Case 17: DecodePICountryCode = "Finance"
-        Case 18: DecodePICountryCode = "Children's Progs"
-        Case 19: DecodePICountryCode = "Social Affairs"
-        Case 20: DecodePICountryCode = "Religion"
-        Case 21: DecodePICountryCode = "Phone In"
-        Case 22: DecodePICountryCode = "Travel & Touring"
-        Case 23: DecodePICountryCode = "Leisure & Hobby"
-        Case 24: DecodePICountryCode = "Jazz Music"
-        Case 25: DecodePICountryCode = "Country Music"
-        Case 26: DecodePICountryCode = "National Music"
-        Case 27: DecodePICountryCode = "Oldies Music"
-        Case 28: DecodePICountryCode = "Folk Music"
-        Case 29: DecodePICountryCode = "Documentary"
-        Case 30: DecodePICountryCode = "Alarm Test"
-        Case 31: DecodePICountryCode = "Alarm - Alarm !"
-    End Select
-    
-End Function
-
-
+Private Sub VSPortAx1_OnRxChar(ByVal Count As Long)
+Debug.Print Count
+End Sub
