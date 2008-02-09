@@ -16,7 +16,7 @@ static char THIS_FILE[]=__FILE__;
 #define new DEBUG_NEW
 #endif
 
-#define RADIO_TIMER_PERIOD 60 /* Timer will fire every RADIO_TIMER_PERIOD ms */
+#define RADIO_TIMER_PERIOD 30 /* Timer will fire every RADIO_TIMER_PERIOD ms */
 
 static RDSData rdsTimerData;
 
@@ -105,7 +105,7 @@ CFMRadioDevice::CFMRadioDevice(bool GetRDSText)
 	m_GetRDSText = GetRDSText;
 
 	m_OldRegister = 0;
-	m_RDSCleared = true;
+	m_RDSCleared = false;
 }
 
 CFMRadioDevice::~CFMRadioDevice()
@@ -519,6 +519,11 @@ void CFMRadioDevice::StreamAudio()
 		//Check that the handles arent NULL
 		if ((m_FMRadioAudioHandle) && (m_SoundCardHandle))
 		{
+			//If there are any free blocks, then stream audio in.
+			if (gWaveFreeBlockCount) {
+				StreamAudioIn();
+			}
+
 			//If there are any free blocks, then stream audio in.
 			if (gWaveFreeBlockCount) {
 				StreamAudioIn();
@@ -1550,9 +1555,9 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 					//If it didn't go through, then wait on the object to complete the read
 					DWORD error = GetLastError();
 					if (error == ERROR_IO_PENDING)
-						if (WaitForSingleObject(o.hEvent, 6000))
+						if (WaitForSingleObject(o.hEvent, 3000))
 							status = true;
-					GetOverlappedResult(m_FMRadioDataHandle, &o, &bytesRead, true);
+					GetOverlappedResult(m_FMRadioDataHandle, &o, &bytesRead, FALSE);
 				}
 				else
 					status = true;
@@ -1717,11 +1722,11 @@ bool CFMRadioDevice::CreateRadioTimer()
 	}
 
 	// Save our previous priority class to be restored later
-	//if (change_process_priority) {
-	//	m_previous_process_priority = GetPriorityClass(GetCurrentProcess());
-	//	SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
-	//	m_process_priority_set = true;
-	//}
+	if (change_process_priority) {
+		m_previous_process_priority = GetPriorityClass(GetCurrentProcess());
+		SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
+		m_process_priority_set = true;
+	}
 
 	// Create the radio player timer
 	ret = CreateTimerQueueTimer(&h_radioTimer,
@@ -1733,8 +1738,6 @@ bool CFMRadioDevice::CreateRadioTimer()
 						  WT_EXECUTEINPERSISTENTTHREAD);
 
 
-	
-	ret = true;
 
 	m_StreamingAllowed = ret ? true : false;
 
@@ -1760,10 +1763,10 @@ bool CFMRadioDevice::DestroyRadioTimer()
 	h_radioTimer = NULL;
 
 	// Restore the previous priority class
-	//if (change_process_priority && m_process_priority_set) {
-	//	SetPriorityClass(GetCurrentProcess(), m_previous_process_priority);
-	//	m_process_priority_set = false;
-	//}
+	if (change_process_priority && m_process_priority_set) {
+		SetPriorityClass(GetCurrentProcess(), m_previous_process_priority);
+		m_process_priority_set = false;
+	}
 
 	return (ret);
 }
