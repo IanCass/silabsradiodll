@@ -35,3 +35,4 @@ VB_GetRDSPIRegion
 VB_GetRDSPICountry
 RegisterTAStart
 RegisterTAStop
+RegisterRadioText

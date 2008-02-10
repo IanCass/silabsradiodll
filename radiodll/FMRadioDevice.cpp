@@ -116,7 +116,7 @@ CFMRadioDevice::CFMRadioDevice(bool GetRDSText)
 	m_GetRDSText = GetRDSText;
 
 	m_OldRegister = 0;
-	m_RDSCleared = false;
+	m_RDSCleared = true;
 }
 
 CFMRadioDevice::~CFMRadioDevice()
@@ -194,6 +194,14 @@ bool CFMRadioDevice::RTAStop (char windowName[256], short dwData, char lpData[25
 	return true;
 }
 
+bool CFMRadioDevice::RRadioText (char windowName[256], short dwData, char lpData[256])
+{	
+	m_RDS.RTCallbackWindowName = windowName;
+	m_RDS.RTCallbackDwData = dwData;
+	m_RDS.RTCallbackCommand = lpData;
+	return true;
+}
+
 
 bool CFMRadioDevice::GetRDSData(RDSData* rdsData) {
 	if (&rdsTimerData) {
@@ -252,6 +260,7 @@ bool CFMRadioDevice::updateRDSData(RDSData* rdsData)
 		//Call the update function and if it succeeds, fill the return structure with the current RDBS data
 		if (UpdateRDS())
 		{
+			/*
 			// Deduplicate
 			if(memcmp(&m_Register[STATUSRSSI], m_OldRDSRegister, sizeof(m_OldRDSRegister))==0)
 			{	//registers identicle
@@ -269,6 +278,7 @@ bool CFMRadioDevice::updateRDSData(RDSData* rdsData)
 					m_RDSCleared = false;
 				return(status);
 			}
+			*/
 										
 			if ((m_Register[STATUSRSSI] & STATUSRSSI_RDSR))
 			{
@@ -1870,6 +1880,7 @@ bool CFMRadioDevice::DestroyRDSTimer()
 
 	// Delete the radio player timer
 	ret = TerminateThread(h_rdsTimer, 0);
+
 
 	h_rdsTimer = NULL;
 

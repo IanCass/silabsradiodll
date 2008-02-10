@@ -465,6 +465,11 @@ USBRADIO_API bool __stdcall RegisterTAStop (char windowName[256], short dwData, 
 	return fmRadioDevice.RTAStop(windowName, dwData, lpData);
 }
 
+USBRADIO_API bool __stdcall RegisterRadioText (char windowName[256], short dwData, char lpData[256])
+{
+	return fmRadioDevice.RRadioText(windowName, dwData, lpData);
+}
+
 USBRADIO_API bool __stdcall VB_GetRDSRegisters (char szRetBuf[256], short *iRetBufSize)
 {
 	FMRADIO_REGISTER	allRegisters[FMRADIO_REGISTER_NUM];
