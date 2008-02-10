@@ -27,12 +27,22 @@ static VOID CALLBACK RadioTimerRoutine(PVOID lpParam, BOOLEAN TimerOrWaitFired)
     }
 }
 
+static DWORD WINAPI RadioThread(LPVOID lpParam)
+{
+    if (lpParam) {
+		while (true) {
+			((CFMRadioDevice*)lpParam)->StreamAudio();
+			Sleep(30);
+		}
+    }
+	return 0;
+}
+
 static DWORD WINAPI RDSThread(LPVOID lpParam)
 {
     if (lpParam) {
 		while (true) {
 			((CFMRadioDevice*)lpParam)->updateRDSData(&rdsTimerData);
-			//Sleep(33);
 		}
     }
 	return 0;
@@ -50,6 +60,7 @@ CFMRadioDevice::CFMRadioDevice(bool GetRDSText)
 	//Make the handles NULL to begin with
 	m_FMRadioAudioHandle = NULL;
 	m_FMRadioDataHandle = NULL;
+	m_FMRadioRDSHandle = NULL;
 	m_SoundCardHandle = NULL;
 
 	//Set the input buffer pointers to NULL, and size to 0
@@ -727,6 +738,7 @@ bool CFMRadioDevice::OpenFMRadioData()
 	bool status = false;
 
 	HANDLE		hHidDeviceHandle = NULL;
+	HANDLE		hHidDeviceHandleR = NULL;
 	GUID		hidGuid;
 	HDEVINFO	hHidDeviceInfo = NULL;
 
@@ -768,6 +780,7 @@ bool CFMRadioDevice::OpenFMRadioData()
 				if (detailResult)
 				{
 					//Open the device				
+					//hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
 					hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, NULL, NULL);
 
 					if (hHidDeviceHandle != INVALID_HANDLE_VALUE)
@@ -1023,6 +1036,7 @@ bool CFMRadioDevice::Tune(double frequency)
 {
 	bool status = false;
 
+
 	//Check that the frequency is in range for the current band
 	if (((m_Register[SYSCONFIG2] & SYSCONFIG2_BAND) && (frequency >= 76.0) && (frequency <= 90.0)) || 
 		(!(m_Register[SYSCONFIG2] & SYSCONFIG2_BAND) && (frequency >= 87.5) && (frequency <= 108.0)))
@@ -1038,6 +1052,7 @@ bool CFMRadioDevice::Tune(double frequency)
 		//bool reEnableAudio = m_Streaming;
 		//m_Tuning = true;
 		//CloseFMRadioAudio();
+		DestroyRDSTimer();
 
 
 		//Use set feature to set the channel
@@ -1070,6 +1085,7 @@ bool CFMRadioDevice::Tune(double frequency)
 				GetSystemTime(&systemTime);
 				if ((systemTime.wSecond - startTime) > POLL_TIMEOUT_SECONDS)
 					error = true;
+				//Sleep(3);
 			}
 
 			//Once we are out of the polling loop, if there was no error and tune completed, clear 
@@ -1103,6 +1119,7 @@ bool CFMRadioDevice::Tune(double frequency)
 
 		//Set tuning back to false
 		//m_Tuning = false;
+		CreateRDSTimer();
 	}	
 
 	if (status) {
@@ -1133,10 +1150,12 @@ bool CFMRadioDevice::Seek(bool seekUp)
 	//Set the seek bit in the Power Config register
 	m_Register[POWERCFG] |= POWERCFG_SEEK;
 
+
 	//Disable audio
 	//bool reEnableAudio = m_Streaming;
 	//m_Tuning = true;
 	//CloseFMRadioAudio();
+	DestroyRDSTimer();
 
 
 	//Use set feature to set the channel
@@ -1167,13 +1186,16 @@ bool CFMRadioDevice::Seek(bool seekUp)
 			GetSystemTime(&systemTime);
 			if ((systemTime.wSecond - startTime) > POLL_TIMEOUT_SECONDS)
 				error = true;
+			//Sleep(3);
 		}
 
 		//Once we are out of the polling loop, if there was no error and tune completed, clear 
 		//the channel bit and get the current channel
 		if (stc && !error)
 		{
+
 			m_Register[POWERCFG] &= ~POWERCFG_SEEK;
+
 
 			if (SetRegisterReport(POWERCFG_REPORT, &m_Register[POWERCFG], 1))
 				status = true;
@@ -1186,7 +1208,10 @@ bool CFMRadioDevice::Seek(bool seekUp)
 		//If the write failed, set our seek bit back
 		m_Register[POWERCFG] &= ~POWERCFG_SEEK;
 
+
 	}
+
+	CreateRDSTimer();
 
 	//Reopen the FM Radio Audio
 	//OpenFMRadioAudio();
@@ -1509,6 +1534,7 @@ bool CFMRadioDevice::SetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer, DWORD dataBufferSize)
 {
 	bool status = false;
+	char op[256];
 
 	//Make sure our handle isn't NULL
 	if (m_FMRadioDataHandle)
@@ -1540,7 +1566,12 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 			else if (report == RDS_REPORT)
 			{
 				DWORD bytesRead;
-				OVERLAPPED o = {0};
+				OVERLAPPED o;
+
+				memset(&o, 0, sizeof(OVERLAPPED));
+
+				o.Offset     = 0; 
+				o.OffsetHigh = 0; 
 				o.hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
 
 				//Clear out endpoint 1 buffer
@@ -1549,18 +1580,33 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 				//Assign the first item in the array to the report number to read
 				m_pEndpoint1ReportBuffer[0] = RDS_REPORT;
 
+				//Sleep(30); // FUCKING Overlapped IO doesn't work which makes this necessary
+
 				//Call a read file on the data handle to read in from endpoint 1
-				if (!ReadFile(m_FMRadioDataHandle, m_pEndpoint1ReportBuffer, m_Endpoint1ReportBufferSize, &bytesRead, &o))
+				//if (!ReadFile(m_FMRadioDataHandle, m_pEndpoint1ReportBuffer, m_Endpoint1ReportBufferSize, &bytesRead, &o))
+				if (!ReadFile(m_FMRadioDataHandle, m_pEndpoint1ReportBuffer, m_Endpoint1ReportBufferSize, &bytesRead, NULL))
+
 				{
 					//If it didn't go through, then wait on the object to complete the read
 					DWORD error = GetLastError();
-					if (error == ERROR_IO_PENDING)
+					if (error == ERROR_IO_PENDING) 
+					{
+
 						if (WaitForSingleObject(o.hEvent, 3000))
 							status = true;
-					GetOverlappedResult(m_FMRadioDataHandle, &o, &bytesRead, FALSE);
+
+						GetOverlappedResult(m_FMRadioDataHandle, &o, &bytesRead, TRUE);
+					
+						//sprintf(op, "Overlapped Result, len = %d %s\n", bytesRead, m_pEndpoint1ReportBuffer);
+						//OutputDebugString(op);
+					}
 				}
-				else
+				else 
+				{
+					//sprintf(op, "Non Overlapped Result, len = %d %s\n", bytesRead, m_pEndpoint1ReportBuffer);
+					//OutputDebugString(op);
 					status = true;
+				}
 
 				//Close the object
 				CloseHandle(o.hEvent);
@@ -1711,6 +1757,7 @@ bool CFMRadioDevice::SetStreamReport(BYTE report, BYTE* dataBuffer, DWORD dataBu
 	return status;
 }
 
+/*
 bool CFMRadioDevice::CreateRadioTimer()
 {
 	bool ret;
@@ -1771,6 +1818,8 @@ bool CFMRadioDevice::DestroyRadioTimer()
 	return (ret);
 }
 
+*/
+
 bool CFMRadioDevice::CreateRDSTimer()
 {
 	bool ret;
@@ -1798,6 +1847,8 @@ bool CFMRadioDevice::CreateRDSTimer()
     //&dwThreadId // pointer to receive thread ID
 	NULL
 	);
+
+	//SetThreadPriority(h_rdsTimer, THREAD_PRIORITY_HIGHEST);
 	
 	ret = true;
     
@@ -1815,12 +1866,75 @@ bool CFMRadioDevice::DestroyRDSTimer()
 	}
 
     // destroy the timer
-	m_StreamingAllowed = false;
+	//m_StreamingAllowed = false;
 
 	// Delete the radio player timer
 	ret = TerminateThread(h_rdsTimer, 0);
 
 	h_rdsTimer = NULL;
+
+	// Restore the previous priority class
+	//if (change_process_priority && m_process_priority_set) {
+	//	SetPriorityClass(GetCurrentProcess(), m_previous_process_priority);
+	//	m_process_priority_set = false;
+	//}
+
+	return (ret);
+}
+
+bool CFMRadioDevice::CreateRadioTimer()
+{
+	bool ret;
+	//DWORD dwThreadId;
+
+	if (h_radioTimer) {
+		// Didn't destroy the old one first!
+		return (false);
+	}
+
+	// Save our previous priority class to be restored later
+	//if (change_process_priority) {
+	//	m_previous_process_priority = GetPriorityClass(GetCurrentProcess());
+	//	SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
+	//	m_process_priority_set = true;
+	//}
+
+	// Create the radio player timer
+	h_radioTimer = CreateThread(
+    NULL,       // pointer to security attributes
+    0,          // initial thread stack size
+    RadioThread, // pointer to thread function
+    this,          // argument for new thread
+    0,          // creation flags (immediate)
+    //&dwThreadId // pointer to receive thread ID
+	NULL
+	);
+
+	//SetThreadPriority(h_radioTimer, THREAD_PRIORITY_HIGHEST);
+	
+	ret = true;
+	m_StreamingAllowed = ret ? true : false;
+    
+	return (ret);
+}
+
+bool CFMRadioDevice::DestroyRadioTimer()
+{
+	bool ret;
+	HANDLE thread_handle;
+
+	if (!h_radioTimer) {
+		// Already destroyed, or not created!
+		return (false);
+	}
+
+    // destroy the timer
+	m_StreamingAllowed = false;
+
+	// Delete the radio player timer
+	ret = TerminateThread(h_radioTimer, 0);
+
+	h_radioTimer = NULL;
 
 	// Restore the previous priority class
 	//if (change_process_priority && m_process_priority_set) {
