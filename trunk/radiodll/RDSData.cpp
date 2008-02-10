@@ -216,7 +216,7 @@ void CRDSData::UpdateRDSText(WORD* registers)
 			AF = (registers[RDSC] >> 8) & 0xff;
 			if (AF > 0 && AF < 205) {
 				float freq = ConvertAFFrequency(AF);
-				sprintf(op, "\nEON FREQ = %.1f mhz\n", freq);
+				sprintf(op, "\nAF FREQ = %.1f mhz\n", freq);
 				OutputDebugString(op);
 				//AFMap.insert(std::pair<double, double>(freq, freq));
 				AFMap[freq] = freq;
@@ -226,7 +226,7 @@ void CRDSData::UpdateRDSText(WORD* registers)
 			AF = registers[RDSC] & 0xff;
 			if (AF > 0 && AF < 205) {
 				float freq = ConvertAFFrequency(AF);
-				sprintf(op, "\nEON FREQ = %.1f mhz\n", freq);
+				sprintf(op, "\nAF FREQ = %.1f mhz\n", freq);
 				OutputDebugString(op);
 				//AFMap.insert(std::pair<double, double>(freq, freq));
 				AFMap[freq] = freq;
@@ -333,7 +333,7 @@ void CRDSData::UpdateRDSText(WORD* registers)
 
 float CRDSData::ConvertAFFrequency(BYTE freq) {
 	float basefreq = 87.5;
-	float offset = (int)freq / 10;
+	float offset = (int)freq / 10.0;
 	return basefreq + offset;
 }
 
@@ -754,6 +754,17 @@ void CRDSData::display_rt()
                        m_rtTmp0[i]    = 0;
                        m_rtTmp1[i]    = 0;
                }
+
+			   std::string rt;
+			   rt.append(RTCallbackCommand);
+			   rt.append("=");
+			   rt.append(m_RDSText);
+
+			   // Alert if we need to
+			   if (!RTCallbackCommand.empty() && !RTCallbackWindowName.empty() != NULL && RTCallbackDwData) {
+					SendToXPort((char *)RTCallbackWindowName.c_str(), RTCallbackDwData, (char*)rt.c_str(), rt.length());
+				}
+
 
                //std::map<WORD, std::string>::iterator it = m_textTable.find(m_piDisplay);
                //if( it != m_textTable.end() ) {

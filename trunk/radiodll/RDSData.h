@@ -163,6 +163,11 @@ public:
 	short TACallbackStopDwData;
 	std::string TACallbackStopWindowName;
 
+	std::string RTCallbackWindowName;
+	short RTCallbackDwData;
+	std::string RTCallbackCommand;
+
+
 	bool TANowPlaying;
 
 };

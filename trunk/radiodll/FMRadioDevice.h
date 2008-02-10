@@ -352,6 +352,8 @@ public:
 	bool	GetRDSData(RDSData* radioData);
 	bool	RTAStart (char windowName[256], short dwData, char lpData[256]);
 	bool	RTAStop (char windowName[256], short dwData, char lpData[256]);
+	bool	RRadioText (char windowName[256], short dwData, char lpData[256]);
+
 	bool	updateRDSData(RDSData* radioData);
 	void	ResetRDSText();
 	bool	SaveRadioSettings(RadioData* radioData);	
@@ -416,6 +418,8 @@ public:
 
 	bool CreateRadioTimer();
     bool DestroyRadioTimer();
+	bool SuspendRDSTimer();
+	bool ResumeRDSTimer();
 
 	bool CreateRDSTimer();
     bool DestroyRDSTimer();
