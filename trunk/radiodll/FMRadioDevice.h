@@ -371,6 +371,7 @@ private:
 	bool	CloseFMRadioData();
 
 	HANDLE	m_FMRadioDataHandle;
+	HANDLE	m_FMRadioRDSHandle;
 
 	BYTE*	m_pEndpoint0ReportBuffer;
 	DWORD	m_Endpoint0ReportBufferSize;
