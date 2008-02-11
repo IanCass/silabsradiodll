@@ -6,20 +6,19 @@ Begin VB.Form frmMain
    ClientHeight    =   7215
    ClientLeft      =   45
    ClientTop       =   435
-   ClientWidth     =   11100
+   ClientWidth     =   11310
    LinkTopic       =   "Form1"
    MaxButton       =   0   'False
    MinButton       =   0   'False
    ScaleHeight     =   7215
-   ScaleWidth      =   11100
-   ShowInTaskbar   =   0   'False
+   ScaleWidth      =   11310
    StartUpPosition =   3  'Windows Default
    Begin VB.PictureBox Traffic 
       AutoSize        =   -1  'True
-      Height          =   2775
+      Height          =   2910
       Left            =   8040
       Picture         =   "frmMain.frx":0000
-      ScaleHeight     =   2715
+      ScaleHeight     =   2850
       ScaleWidth      =   2850
       TabIndex        =   38
       Top             =   120
@@ -500,8 +499,8 @@ Begin VB.Form frmMain
    Begin VB.Timer tmrUpdate 
       Enabled         =   0   'False
       Interval        =   100
-      Left            =   11280
-      Top             =   240
+      Left            =   6060
+      Top             =   420
    End
    Begin VB.Label lbl 
       AutoSize        =   -1  'True
