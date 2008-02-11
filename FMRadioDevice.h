@@ -11,8 +11,9 @@
 
 #define _WIN32_WINNT 0x0500
 
-#include <windows.h>
+typedef GUID *LPGUID;
 
+#include <windows.h>
 
 //ULONG/DWORD pointer types defined for DDK if not already
 #ifndef ULONG_PTR
@@ -33,14 +34,12 @@
 #pragma comment (lib, "kernel32.lib")
 #endif
 
-#include "/winddk/3790.1830/inc/wxp/initguid.h"
-
 #define MAX_LOADSTRING 256
 
 extern "C" {
-#include "/winddk/3790.1830/inc/wxp/hidsdi.h"
+#include "hidsdi.h"
 }
-#include "/winddk/3790.1830/inc/wxp/setupapi.h"
+#include "setupapi.h"
 
 #include <dbt.h>
 
@@ -228,7 +227,7 @@ typedef BYTE	SCRATCH_PAGE[SCRATCH_PAGE_SIZE];
 
 //Seek Threshold Definitions
 #define MAX_SEEK_THRESHOLD			63
-#define PREFERRED_SEEK_THRESHOLD	31
+#define PREFERRED_SEEK_THRESHOLD	25
 
 //Number of presets definition
 #define PRESET_NUM	12
@@ -348,6 +347,7 @@ public:
 	bool	Mute(bool mute);
 	bool	Tune(bool tuneUp);
 	bool	Tune(double frequency);
+	bool	DoTune(double frequency);
 	bool	Seek(bool seekUp);
 	bool	GetRDSData(RDSData* radioData);
 	bool	RTAStart (char windowName[256], short dwData, char lpData[256]);
@@ -421,19 +421,16 @@ public:
 	bool SuspendRDSTimer();
 	bool ResumeRDSTimer();
 
-	bool CreateRDSTimer();
-    bool DestroyRDSTimer();
-	bool        m_StreamingAllowed;
-
-	bool	CloseFMRadioAudio();	
+private:
 	bool	OpenFMRadioAudio();
 	bool	OpenSoundCard();
+	void	InitializeStream();
+	bool	CloseFMRadioAudio();	
 	bool	CloseSoundCard();
 	
 private:
 
 
-	void	InitializeStream();
 
 
 
@@ -449,6 +446,8 @@ private:
 	char*		m_WaveformBuffer;
 
 
+	bool		m_StreamingAllowed;
+	bool		m_AudioAllowed;
 	bool		m_Streaming;
 	bool		m_Tuning;
 	int			m_CurrentBlock;

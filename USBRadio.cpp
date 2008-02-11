@@ -34,7 +34,6 @@ OpenFMRadio (CFMRadioDevice* fmDevice)
 	if (fmDevice->OpenFMRadio(&radioData) == STATUS_OK ) {
 		fmDevice->StreamAudio();
 		fmDevice->CreateRadioTimer();
-		fmDevice->CreateRDSTimer();
 		return (true);
 	}
 
@@ -44,10 +43,13 @@ OpenFMRadio (CFMRadioDevice* fmDevice)
 bool
 CloseFMRadio (CFMRadioDevice* fmDevice)
 {
-	fmDevice->DestroyRadioTimer();
-	fmDevice->DestroyRDSTimer();
-	fmDevice->CloseFMRadio();
-	return (true);
+	if (fmDevice->DestroyRadioTimer())
+	{
+		fmDevice->CloseFMRadio();
+		return (true);
+	}
+
+	return (false);
 }
 
 
@@ -91,7 +93,7 @@ FMTune (long frequency)
 USBRADIO_API char* __stdcall
 GetModuleName ()
 {
-	return ("Silicon Labs USB FM Radio Reference Design");
+	return ("Silicon Labs USB FM Radio Reference Design (Appy v0.1)");
 }
 
 USBRADIO_API unsigned long __stdcall
@@ -104,11 +106,6 @@ USBRADIO_API bool __stdcall
 HWInit ()
 {
 	bool ret = OpenFMRadio(&fmRadioDevice);
-	
-	if (ret) {
-		fmRadioDevice.Mute(FALSE);
-		TuneFreq(87000);
-	}
 
 	return (ret);
 }
@@ -122,32 +119,13 @@ HWDeInit ()
 USBRADIO_API void __stdcall
 TuneFreq (long frequency)
 {
-	//std::ofstream outfile;
-	//char output [100];
-
-//	outfile.open(, std::ios::out, std::filebuf::open);
-	//outfile.open("c:\\log.txt", std::ofstream::app);
-
-	//sprintf(output, "TuneFreq: %d\n", frequency);
-
-	//outfile << output;
-
 	fmRadioDevice.Tune((double)frequency/1000);
 }
 
 USBRADIO_API void __stdcall
 SetMute (bool mute)
 {
-	//fmRadioDevice.Mute(mute);
-	if (mute) {
-		fmRadioDevice.DestroyRadioTimer();
-		fmRadioDevice.CloseFMRadioAudio();
-		fmRadioDevice.CloseSoundCard();
-	} else {
-		fmRadioDevice.OpenFMRadioAudio();
-		fmRadioDevice.OpenSoundCard();
-		fmRadioDevice.CreateRadioTimer();
-	}
+	fmRadioDevice.Mute(mute);
 }
 
 USBRADIO_API long __stdcall
@@ -246,7 +224,7 @@ USBRADIO_API bool __stdcall VB_GetModuleName (char szReturnModuleName[256], shor
 {
 
 	*iSize=strlen("Silicon Labs USB FM Radio Reference Design (Appy v0.1)");
-	strncpy(szReturnModuleName, "Silicon Labs USB FM Radio Reference Design", *iSize);
+	strncpy(szReturnModuleName, "Silicon Labs USB FM Radio Reference Design (Appy v0.1)", *iSize);
 
 	return true;
 }

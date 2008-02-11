@@ -16,37 +16,41 @@ static char THIS_FILE[]=__FILE__;
 #define new DEBUG_NEW
 #endif
 
-#define RADIO_TIMER_PERIOD 30 /* Timer will fire every RADIO_TIMER_PERIOD ms */
+#define RADIO_TIMER_PERIOD 30	/* Call StreamAudio every RADIO_TIMER_PERIOD ms */
+#define RDS_TIMER_PERIOD 40		/* Call updateRDSData every RDS_TIMER_PERIOD ms */
 
 static RDSData rdsTimerData;
+static bool ShouldQuit;
+static int CurrFreq;
+static int QueFreq;
+static bool Tuned;
 
-static VOID CALLBACK RadioTimerRoutine(PVOID lpParam, BOOLEAN TimerOrWaitFired)
+DWORD WINAPI RadioThread( LPVOID lpParam )
 {
-    if (lpParam) {
+	while(!ShouldQuit) {
 		((CFMRadioDevice*)lpParam)->StreamAudio();
-    }
-}
+		if (QueFreq != CurrFreq) ((CFMRadioDevice*)lpParam)->DoTune((double)QueFreq/10);
+		Sleep (RADIO_TIMER_PERIOD);
+	}
 
-static DWORD WINAPI RadioThread(LPVOID lpParam)
-{
-    if (lpParam) {
-		while (true) {
-			((CFMRadioDevice*)lpParam)->StreamAudio();
-			Sleep(30);
-		}
-    }
 	return 0;
 }
 
-static DWORD WINAPI RDSThread(LPVOID lpParam)
+DWORD WINAPI RDSThread( LPVOID lpParam )
 {
-    if (lpParam) {
-		while (true) {
-			((CFMRadioDevice*)lpParam)->updateRDSData(&rdsTimerData);
-		}
-    }
+	int LastFreq;
+
+	while(!ShouldQuit) {
+		// This prevents *MOST* of the RDS garbage left in the read pipe after switching freqs
+		if (LastFreq != CurrFreq) { LastFreq = CurrFreq; Sleep(1200); }
+		// Updat RDS
+		((CFMRadioDevice*)lpParam)->updateRDSData(&rdsTimerData);
+		Sleep (RDS_TIMER_PERIOD);
+	}
+
 	return 0;
 }
+
 
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
@@ -75,6 +79,7 @@ CFMRadioDevice::CFMRadioDevice(bool GetRDSText)
 	m_StreamingAllowed = false;
 	m_Streaming = false;
 	m_Tuning = false;
+	m_AudioAllowed = true;
 
 	//Setup the wave format based on our defined audio data
 	m_FMRadioWaveFormat.wFormatTag = WAVE_FORMAT_PCM;
@@ -204,12 +209,17 @@ bool CFMRadioDevice::RRadioText (char windowName[256], short dwData, char lpData
 
 
 bool CFMRadioDevice::GetRDSData(RDSData* rdsData) {
+
 	if (&rdsTimerData) {
 
 		//Store all the current RDS data in the rds Data structure
-		rdsData->currentStation = CalculateStationFrequency(m_Register[READCHAN] & READCHAN_READCHAN);
+		rdsData->currentStation = (double)QueFreq/10; // CalculateStationFrequency(m_Register[READCHAN] & READCHAN_READCHAN);
 		rdsData->recievedSignalStrength = m_Register[STATUSRSSI] & STATUSRSSI_RSSI;
-		rdsData->isStereo = (((m_Register[STATUSRSSI] & STATUSRSSI_ST) >> 8) == DATA_MONOSTEREO_STEREO)?true:false;
+		if(rdsData->recievedSignalStrength > 15) {
+			rdsData->isStereo = (((m_Register[STATUSRSSI] & STATUSRSSI_ST) >> 8) == DATA_MONOSTEREO_STEREO)?true:false;
+		}
+		else 
+			rdsData->isStereo = false;
 
 		// Radio Text
 		if (rdsData->rdsText != m_RDS.m_RDSText) {
@@ -255,7 +265,7 @@ bool CFMRadioDevice::updateRDSData(RDSData* rdsData)
 	char op[20];
 
 	//Check that rdbsData is not NULL
-	if (rdsData)  //PC Note : need to check why we do this
+	if (rdsData)
 	{
 		//Call the update function and if it succeeds, fill the return structure with the current RDBS data
 		if (UpdateRDS())
@@ -545,11 +555,6 @@ void CFMRadioDevice::StreamAudio()
 				StreamAudioIn();
 			}
 
-			//If there are any free blocks, then stream audio in.
-			if (gWaveFreeBlockCount) {
-				StreamAudioIn();
-			}
-
 			//If there are any blocks ready for output, then stream audio out
 			if (gWaveFreeBlockCount < BLOCK_COUNT) {
 				StreamAudioOut();
@@ -615,10 +620,17 @@ bool CFMRadioDevice::StreamAudioOut()
 	//Prepare the header for streaming out
 	if (waveOutPrepareHeader(m_SoundCardHandle, &m_OutputHeader[m_CurrentBlock], sizeof(WAVEHDR)) == MMSYSERR_NOERROR)
 	{
+		if (m_AudioAllowed)
+			status = (waveOutWrite(m_SoundCardHandle, &m_OutputHeader[m_CurrentBlock], sizeof(WAVEHDR)) == MMSYSERR_NOERROR);
+		else
+			status = true;
+
 		//Write the sound to the sound card
-		if (waveOutWrite(m_SoundCardHandle, &m_OutputHeader[m_CurrentBlock], sizeof(WAVEHDR)) == MMSYSERR_NOERROR)
+		if (status)
 		{
 			//waveOutProc callback function will get called, and free block counter gets incremented
+			if (!m_AudioAllowed)
+				if (gWaveFreeBlockCount == 1) waveOutProc(0, WOM_DONE, (DWORD)&gWaveFreeBlockCount, 0, 0);
 
 			//Increment the index of the current block to be played
 			m_CurrentBlock++;
@@ -983,22 +995,23 @@ bool CFMRadioDevice::StopStream(bool stop)
 
 bool CFMRadioDevice::Mute(bool mute)
 {
-	bool status = false;
 
-	//Depending on the mute, set the mute bit on the FM Radio
-
-	if (!mute)
-		m_Register[POWERCFG] |= POWERCFG_DMUTE;
+	if (mute)
+	{
+		m_AudioAllowed = false;
+		waveOutReset(m_SoundCardHandle);
+	}
 	else
-		m_Register[POWERCFG] &= ~POWERCFG_DMUTE;
+	{
+		m_AudioAllowed = true;
+		for(int i=0;i++;i<BLOCK_COUNT)
+			StreamAudioOut();
+	}
 
-	if (SetRegisterReport(POWERCFG_REPORT, &m_Register[POWERCFG], 1))
-		status = true;
-
-
-	return status;
+	return true;
 }
 
+// Buggy SHIT from who knows -- Don't use
 bool CFMRadioDevice::Tune(bool tuneUp)
 {
 	bool status = false;
@@ -1031,11 +1044,12 @@ bool CFMRadioDevice::Tune(bool tuneUp)
 			channel--;
 	}
 	
-	//Onc the proper frequency is attained, tune the channel
+	//Once the proper frequency is attained, tune the channel
 	if (Tune(CalculateStationFrequency(channel)))
 		status = true;
 
 	if (status) {
+		
 		ResetRDSText();
 	}
 
@@ -1044,8 +1058,19 @@ bool CFMRadioDevice::Tune(bool tuneUp)
 
 bool CFMRadioDevice::Tune(double frequency)
 {
+
+	QueFreq = (int)((frequency+0.001)*10);
+
+	return true;
+}
+
+bool CFMRadioDevice::DoTune(double frequency)
+{
 	bool status = false;
 
+	//char output [100];
+	//sprintf(output, "TuneFreq: %f\nChanBits: %d\nCalc: %d", frequency, (int)CalculateStationFrequencyBits(frequency), (int)((frequency+0.001)*10));
+	//MessageBox(0, output, "Test",0);
 
 	//Check that the frequency is in range for the current band
 	if (((m_Register[SYSCONFIG2] & SYSCONFIG2_BAND) && (frequency >= 76.0) && (frequency <= 90.0)) || 
@@ -1058,12 +1083,7 @@ bool CFMRadioDevice::Tune(double frequency)
 		m_Register[CHANNEL] &= ~CHANNEL_CHAN;
 		m_Register[CHANNEL] |= channel | CHANNEL_TUNE;
 		
-		//Disable audio
-		//bool reEnableAudio = m_Streaming;
-		//m_Tuning = true;
-		//CloseFMRadioAudio();
-		DestroyRDSTimer();
-
+		m_Tuning = true;
 
 		//Use set feature to set the channel
 		if (SetRegisterReport(CHANNEL_REPORT, &m_Register[CHANNEL], 1))
@@ -1117,19 +1137,10 @@ bool CFMRadioDevice::Tune(double frequency)
 			m_Register[CHANNEL] &= ~CHANNEL_TUNE;
 		}
 
-		//Reopen the Audio
-		//OpenFMRadioAudio();
-
-		//Enable audio again if we were streaming
-		//if (reEnableAudio)
-		//{
-		//	InitializeStream();
-		//}
-
+		CurrFreq = (int)((frequency+0.001)*10);
 
 		//Set tuning back to false
-		//m_Tuning = false;
-		CreateRDSTimer();
+		m_Tuning = false;
 	}	
 
 	if (status) {
@@ -1149,6 +1160,7 @@ bool CFMRadioDevice::Tune(double frequency)
 
 bool CFMRadioDevice::Seek(bool seekUp)
 {
+
 	bool status = false;
 
 	//Set the seekUp bit in the Power Config register
@@ -1160,13 +1172,7 @@ bool CFMRadioDevice::Seek(bool seekUp)
 	//Set the seek bit in the Power Config register
 	m_Register[POWERCFG] |= POWERCFG_SEEK;
 
-
-	//Disable audio
-	//bool reEnableAudio = m_Streaming;
-	//m_Tuning = true;
-	//CloseFMRadioAudio();
-	DestroyRDSTimer();
-
+	m_Tuning = true;
 
 	//Use set feature to set the channel
 	if (SetRegisterReport(POWERCFG_REPORT, &m_Register[POWERCFG], 1))
@@ -1217,34 +1223,25 @@ bool CFMRadioDevice::Seek(bool seekUp)
 	{
 		//If the write failed, set our seek bit back
 		m_Register[POWERCFG] &= ~POWERCFG_SEEK;
-
-
 	}
-
-	CreateRDSTimer();
-
-	//Reopen the FM Radio Audio
-	//OpenFMRadioAudio();
-
-	//Enable audio again if we were streaming
-	//if (reEnableAudio)
-	//{		
-	//	InitializeStream();
-	//}
 
 
 	//Set tuning back to false
-	//m_Tuning = false;
+	m_Tuning = false;
 
 	ResetRDSText();
-		
-		RDSData rds_data;
-		if (GetRDSData(&rds_data)) {
-			RadioData radioData;
-			GetRadioData(&radioData);
-			radioData.currentStation = rds_data.currentStation;
-			SetRadioData(&radioData);
-		}
+
+	// Save new Freq
+	CurrFreq = (int)(CalculateStationFrequency(m_Register[READCHAN] & READCHAN_READCHAN)*10);
+	QueFreq = CurrFreq;
+
+	RDSData rds_data;
+	if (GetRDSData(&rds_data)) {
+		RadioData radioData;
+		GetRadioData(&radioData);
+		radioData.currentStation = rds_data.currentStation;
+		SetRadioData(&radioData);
+	}
 
 	return status;
 }
@@ -1327,7 +1324,7 @@ bool CFMRadioDevice::GetRadioData(RadioData* radioData)
 			radioData->currentStation = 102.3;
 			radioData->seekThreshold = PREFERRED_SEEK_THRESHOLD;
 			radioData->band = DATA_BAND_875_108MHZ;
-			radioData->spacing = DATA_SPACING_200KHZ;
+			radioData->spacing = DATA_SPACING_100KHZ;
 			radioData->deemphasis = DATA_DEEMPHASIS_75;
 			radioData->monoStereo = DATA_MONOSTEREO_STEREO;
 			radioData->alwaysOnTop = false;
@@ -1376,10 +1373,10 @@ bool CFMRadioDevice::GetRadioData(RadioData* radioData)
 			radioData->preset[11] = CalculateStationFrequency((WORD)(((m_ScratchPage[16] & 0x03) << 8) | (m_ScratchPage[17] & 0xFF)));
 			radioData->currentStation = CalculateStationFrequency((WORD)(((m_ScratchPage[18] & 0xFF) << 2) | ((m_ScratchPage[19] & 0xC0) >> 6)));
 			radioData->band = m_ScratchPage[19] & DATA_BAND;
-			radioData->spacing = m_ScratchPage[19] & DATA_SPACING;
+			radioData->spacing = DATA_SPACING_100KHZ; // m_ScratchPage[19] & DATA_SPACING;
 			radioData->deemphasis = m_ScratchPage[19] & DATA_DEEMPHASIS;
-			radioData->monoStereo = m_ScratchPage[19] & DATA_MONOSTEREO;
-			radioData->seekThreshold = m_ScratchPage[20];
+			radioData->monoStereo = DATA_MONOSTEREO_STEREO; // m_ScratchPage[19] & DATA_MONOSTEREO;
+			radioData->seekThreshold = PREFERRED_SEEK_THRESHOLD; // m_ScratchPage[20];
 			radioData->alwaysOnTop = (m_ScratchPage[21] & DATA_ALWAYSONTOP) ? true : false;
 			radioData->showInTray = (m_ScratchPage[21] & DATA_SHOWINTRAY) ? true : false;
 			radioData->showInTitleBar = (m_ScratchPage[21] & DATA_SHOWINTITLEBAR) ? true : false;
@@ -1406,7 +1403,7 @@ bool CFMRadioDevice::SetRadioData(RadioData* radioData)
 			m_ScratchPage[i] = 0xFF;
 
 		//Clear the scratch page of used data to 00s
-		for (int i = 0; i < SCRATCH_PAGE_USED_SIZE; i++)
+		for (i = 0; i < SCRATCH_PAGE_USED_SIZE; i++)
 			m_ScratchPage[i] = 0x00;
 
 		//See GetRadioData for the format of the scratch page
@@ -1767,38 +1764,29 @@ bool CFMRadioDevice::SetStreamReport(BYTE report, BYTE* dataBuffer, DWORD dataBu
 	return status;
 }
 
-/*
+
 bool CFMRadioDevice::CreateRadioTimer()
 {
 	bool ret;
-	DWORD dwThreadId;
+	DWORD ThreadID;
 
 	if (h_radioTimer) {
 		// Didn't destroy the old one first!
 		return (false);
 	}
 
-	// Save our previous priority class to be restored later
-	if (change_process_priority) {
-		m_previous_process_priority = GetPriorityClass(GetCurrentProcess());
-		SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
-		m_process_priority_set = true;
-	}
+	// Make sure we just don't quit
+	ShouldQuit = false;
 
-	// Create the radio player timer
-	ret = CreateTimerQueueTimer(&h_radioTimer,
-					      NULL,
-						  RadioTimerRoutine,
-						  this,
-						  0,
-						  RADIO_TIMER_PERIOD,
-						  WT_EXECUTEINPERSISTENTTHREAD);
+	// Create our Radio & RDS threads
+	h_radioTimer = CreateThread(NULL, 0, RadioThread, this, 0, &ThreadID); 
+	h_rdsTimer = CreateThread(NULL, 0, RDSThread, this, 0, &ThreadID); 
+	SetThreadPriority(h_radioTimer, THREAD_PRIORITY_TIME_CRITICAL);
+	SetThreadPriority(h_rdsTimer, THREAD_PRIORITY_TIME_CRITICAL);
 
+	m_StreamingAllowed = true;
 
-
-	m_StreamingAllowed = ret ? true : false;
-
-	return (ret);
+	return true;
 }
 
 bool CFMRadioDevice::DestroyRadioTimer()
@@ -1814,144 +1802,15 @@ bool CFMRadioDevice::DestroyRadioTimer()
     // destroy the timer
 	m_StreamingAllowed = false;
 
-	// Delete the radio player timer
-	ret = DeleteTimerQueueTimer(NULL, h_radioTimer, INVALID_HANDLE_VALUE);
+	// Quit Threads
+	ShouldQuit = true;
+	Sleep (200);
 
+	// Set they've been terminated
 	h_radioTimer = NULL;
-
-	// Restore the previous priority class
-	if (change_process_priority && m_process_priority_set) {
-		SetPriorityClass(GetCurrentProcess(), m_previous_process_priority);
-		m_process_priority_set = false;
-	}
-
-	return (ret);
-}
-
-*/
-
-bool CFMRadioDevice::CreateRDSTimer()
-{
-	bool ret;
-	//DWORD dwThreadId;
-
-	if (h_rdsTimer) {
-		// Didn't destroy the old one first!
-		return (false);
-	}
-
-	// Save our previous priority class to be restored later
-	//if (change_process_priority) {
-	//	m_previous_process_priority = GetPriorityClass(GetCurrentProcess());
-	//	SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
-	//	m_process_priority_set = true;
-	//}
-
-	// Create the radio player timer
-	h_rdsTimer = CreateThread(
-    NULL,       // pointer to security attributes
-    0,          // initial thread stack size
-    RDSThread, // pointer to thread function
-    this,          // argument for new thread
-    0,          // creation flags (immediate)
-    //&dwThreadId // pointer to receive thread ID
-	NULL
-	);
-
-	//SetThreadPriority(h_rdsTimer, THREAD_PRIORITY_HIGHEST);
-	
-	ret = true;
-    
-	return (ret);
-}
-
-bool CFMRadioDevice::DestroyRDSTimer()
-{
-	bool ret;
-	HANDLE thread_handle;
-
-	if (!h_rdsTimer) {
-		// Already destroyed, or not created!
-		return (false);
-	}
-
-    // destroy the timer
-	//m_StreamingAllowed = false;
-
-	// Delete the radio player timer
-	ret = TerminateThread(h_rdsTimer, 0);
-
 
 	h_rdsTimer = NULL;
 
-	// Restore the previous priority class
-	//if (change_process_priority && m_process_priority_set) {
-	//	SetPriorityClass(GetCurrentProcess(), m_previous_process_priority);
-	//	m_process_priority_set = false;
-	//}
-
-	return (ret);
+	return true;
 }
 
-bool CFMRadioDevice::CreateRadioTimer()
-{
-	bool ret;
-	//DWORD dwThreadId;
-
-	if (h_radioTimer) {
-		// Didn't destroy the old one first!
-		return (false);
-	}
-
-	// Save our previous priority class to be restored later
-	//if (change_process_priority) {
-	//	m_previous_process_priority = GetPriorityClass(GetCurrentProcess());
-	//	SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
-	//	m_process_priority_set = true;
-	//}
-
-	// Create the radio player timer
-	h_radioTimer = CreateThread(
-    NULL,       // pointer to security attributes
-    0,          // initial thread stack size
-    RadioThread, // pointer to thread function
-    this,          // argument for new thread
-    0,          // creation flags (immediate)
-    //&dwThreadId // pointer to receive thread ID
-	NULL
-	);
-
-	//SetThreadPriority(h_radioTimer, THREAD_PRIORITY_HIGHEST);
-	
-	ret = true;
-	m_StreamingAllowed = ret ? true : false;
-    
-	return (ret);
-}
-
-bool CFMRadioDevice::DestroyRadioTimer()
-{
-	bool ret;
-	HANDLE thread_handle;
-
-	if (!h_radioTimer) {
-		// Already destroyed, or not created!
-		return (false);
-	}
-
-    // destroy the timer
-	m_StreamingAllowed = false;
-
-	// Delete the radio player timer
-	ret = TerminateThread(h_radioTimer, 0);
-
-	h_radioTimer = NULL;
-
-	// Restore the previous priority class
-	//if (change_process_priority && m_process_priority_set) {
-	//	SetPriorityClass(GetCurrentProcess(), m_previous_process_priority);
-	//	m_process_priority_set = false;
-	//}
-
-	return (ret);
-}

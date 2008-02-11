@@ -17,6 +17,12 @@ static char THIS_FILE[]=__FILE__;
 #define new DEBUG_NEW
 #endif
 
+//#define DOLOG
+
+#ifdef DOLOG
+static std::ofstream outfile;
+#endif
+
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
 //////////////////////////////////////////////////////////////////////
@@ -27,9 +33,11 @@ CRDSData::CRDSData()
 	TANowPlaying = false;
 	InitRDS();	
 
-	//outfile.open("c:\\log.txt", std::ofstream::app);
-	outfile << "Log File\r\n" << std::flush;
-
+#ifdef DOLOG
+	char output [100];
+	outfile.open("c:\\log.txt", std::ofstream::app);
+	outfile << "RDS Log Started\n";
+#endif
 }	
 
 CRDSData::~CRDSData()
@@ -142,7 +150,6 @@ void CRDSData::UpdateRDSText(WORD* registers)
 		validation_limit = 6;
 	}
 
-	LogRDSDataStream(registers);
 
 	m_RdsDataAvailable = 0;
 
@@ -201,7 +208,117 @@ void CRDSData::UpdateRDSText(WORD* registers)
 		}
 		ta_validate_count = 0;
 	}
+
+#ifdef DOLOG
+	//
+	switch (group_type) {
+		case RDS_TYPE_0A:
+					outfile << "0A";
+					break;
+		case RDS_TYPE_0B:
+					outfile << "0B";
+					break;
+		case RDS_TYPE_1A:
+					outfile << "1A";
+					break;
+		case RDS_TYPE_1B:
+					outfile << "1B";
+					break;
+		case RDS_TYPE_2A:
+					outfile << "2A";
+					break;
+		case RDS_TYPE_2B:
+					outfile << "2B";
+					break;
+		case RDS_TYPE_3A:
+					outfile << "3A";
+					break;
+		case RDS_TYPE_3B:
+					outfile << "3B";
+					break;
+		case RDS_TYPE_4A:
+					outfile << "4A";
+					break;
+		case RDS_TYPE_4B:
+					outfile << "4B";
+					break;
+		case RDS_TYPE_5A:
+					outfile << "5A";
+					break;
+		case RDS_TYPE_5B:
+					outfile << "5B";
+					break;		
+		case RDS_TYPE_6A:
+					outfile << "6A";
+					break;
+		case RDS_TYPE_6B:
+					outfile << "6B";
+					break;
+		case RDS_TYPE_7A:
+					outfile << "7A";
+					break;
+		case RDS_TYPE_7B:
+					outfile << "7B";
+					break;
+		case RDS_TYPE_8A:
+					outfile << "8A";
+					break;
+		case RDS_TYPE_8B:
+					outfile << "8B";
+					break;
+		case RDS_TYPE_9A:
+					outfile << "9A";
+					break;
+		case RDS_TYPE_9B:
+					outfile << "9B";
+					break;
+		case RDS_TYPE_10A:
+					outfile << "10A";
+					break;
+		case RDS_TYPE_10B:
+					outfile << "10B";
+					break;
+		case RDS_TYPE_11A:
+					outfile << "11A";
+					break;
+		case RDS_TYPE_11B:
+					outfile << "11B";
+					break;
+		case RDS_TYPE_12A:
+					outfile << "12A";
+					break;
+		case RDS_TYPE_12B:
+					outfile << "12B";
+					break;
+		case RDS_TYPE_13A:
+					outfile << "13A";
+					break;
+		case RDS_TYPE_13B:
+					outfile << "13B";
+					break;
+		case RDS_TYPE_14A:
+					outfile << "14A";
+					break;
+		case RDS_TYPE_14B:
+					outfile << "14B";
+					break;
+		case RDS_TYPE_15A:
+					outfile << "15A";
+					break;
+		case RDS_TYPE_15B:
+					outfile << "15B";
+					break;
+	}
 		
+
+	outfile 
+		<< " [A=" << std::bitset<16>(registers[RDSA]) << ","
+		<< " [B=" << std::bitset<16>(registers[RDSB]) << ","
+		<< " [C=" << std::bitset<16>(registers[RDSC]) << ","
+		<< " [D=" << std::bitset<16>(registers[RDSD]) << ","
+		<< "]\n";
+	// */
+#endif
 
     switch (group_type) {
 
@@ -331,7 +448,8 @@ void CRDSData::UpdateRDSText(WORD* registers)
     }
 }
 
-float CRDSData::ConvertAFFrequency(BYTE freq) {
+float CRDSData::ConvertAFFrequency(BYTE freq)
+{
 	float basefreq = 87.5;
 	float offset = (int)freq / 10.0;
 	return basefreq + offset;

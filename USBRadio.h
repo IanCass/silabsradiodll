@@ -6,7 +6,7 @@
 // USBRADIO_API functions as being imported from a DLL, wheras this DLL sees symbols
 // defined with this macro as being exported.
 #include "FMRadioDevice.h"
-#include "oleauto.h"
+//#include "oleauto.h"
 
 #ifdef USBRADIO_EXPORTS
 #define USBRADIO_API __declspec(dllexport)

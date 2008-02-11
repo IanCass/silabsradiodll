@@ -132,7 +132,6 @@ class CRDSData
 	void LogRDSDataStream(WORD* registers);
 	float ConvertAFFrequency(BYTE freq);
 
-
 public:
 	CRDSData();
 	virtual ~CRDSData();
