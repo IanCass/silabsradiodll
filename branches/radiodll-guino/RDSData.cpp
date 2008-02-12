@@ -113,6 +113,7 @@ void CRDSData::InitRDS()
 
 void CRDSData::UpdateRDSText(WORD* registers)
 {
+	
 	BYTE group_type;      // bits 4:1 = type,  bit 0 = version
     BYTE addr;
 	BYTE errorCount;
@@ -205,7 +206,7 @@ void CRDSData::UpdateRDSText(WORD* registers)
 			TANowPlaying = false;
 		}
 		ta_validate_count = 0;
-	}
+	} 
 
 #ifdef DOLOG
 	switch (group_type) {
@@ -316,7 +317,6 @@ void CRDSData::UpdateRDSText(WORD* registers)
 #endif
 
     switch (group_type) {
-
 		// 0A, Basic tuning and switching info
 		case RDS_TYPE_0A:
 			addr = (registers[RDSB]&0x3)*2;
@@ -342,13 +342,14 @@ void CRDSData::UpdateRDSText(WORD* registers)
 				OutputDebugString(op);
 				//AFMap.insert(std::pair<double, double>(freq, freq));
 				AFMap[freq] = freq;
-			}
+			} 
 
-			sprintf(op, "AF = %d\n", AFMap.size());
-			OutputDebugString (op);
+			//sprintf(op, "AF = %d\n", AFMap.size());
+			//OutputDebugString (op);
+			//OutputDebugString("---");
+			// */
 
-			OutputDebugString("---");
-	        update_ps(addr+0, registers[RDSD] >> 8  );
+			update_ps(addr+0, registers[RDSD] >> 8  );
 		    update_ps(addr+1, registers[RDSD] & 0xff);
 		    break;
 		

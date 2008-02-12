@@ -7,7 +7,7 @@
 
 #if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+#endif
 
 #define _WIN32_WINNT 0x0500
 
@@ -234,6 +234,7 @@ typedef BYTE	SCRATCH_PAGE[SCRATCH_PAGE_SIZE];
 
 //Global variables for the critical section and 
 //free block count, used by callback functions
+static CRITICAL_SECTION gRDSCriticalSection;
 static CRITICAL_SECTION gWaveCriticalSection;
 static volatile BYTE gWaveFreeBlockCount;
 
@@ -418,8 +419,6 @@ public:
 
 	bool CreateRadioTimer();
     bool DestroyRadioTimer();
-	bool SuspendRDSTimer();
-	bool ResumeRDSTimer();
 
 private:
 	bool	OpenFMRadioAudio();
@@ -461,7 +460,6 @@ private:
 	void		FreeBlocks(WAVEHDR*);
 
 	HANDLE h_radioTimer;
-	HANDLE h_rdsTimer;
 
 ////////////////////////////
 ////////////////////////////
