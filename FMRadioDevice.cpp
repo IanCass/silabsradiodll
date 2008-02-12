@@ -4,61 +4,52 @@
 
 #include "stdafx.h"
 #include "FMRadioDevice.h"
-#include "math.h"
-#include "aclapi.h"
-
 #include <string>
 #include <vector>
-#include <map>
-#ifdef _DEBUG
-#undef THIS_FILE
-static char THIS_FILE[]=__FILE__;
-#define new DEBUG_NEW
-#endif
 
-#define RADIO_TIMER_PERIOD 30	/* Call StreamAudio every RADIO_TIMER_PERIOD ms */
-#define RDS_TIMER_PERIOD 40		/* Call updateRDSData every RDS_TIMER_PERIOD ms */
-
-static RDSData rdsTimerData;
-static bool ShouldQuit;
-static int CurrFreq;
-static int QueFreq;
-static bool Tuned;
-static int lastPI = 0;
-
+//////////// DEBUG ////////////
 //#define DOLOG
-
 #ifdef DOLOG
 #include <fstream>
 static std::ofstream outfile;
 #endif
+//////////////////////////////
+
+#define RADIO_TIMER_PERIOD 30	/* Call StreamAudio every RADIO_TIMER_PERIOD ms */
+#define RDS_TIMER_PERIOD 40		/* Call updateRDSData every RDS_TIMER_PERIOD ms */
+
+static RDSData rdsTimerData;	/* Variable Outside Class for Direct Thread access */
+static bool ShouldQuit;			/* Variable Outside Class for Direct Thread access */
+static int CurrFreq;			/* Variable Outside Class for Direct Thread access */
+static int QueFreq;				/* Variable Outside Class for Direct Thread access */
 
 DWORD WINAPI RadioThread( LPVOID lpParam )
 {
 	while(!ShouldQuit) {
-		((CFMRadioDevice*)lpParam)->StreamAudio();
+		//If new freq waiting to be tuned, do it
 		if (QueFreq != CurrFreq) ((CFMRadioDevice*)lpParam)->DoTune((double)QueFreq/10);
+		// Process Audio
+		((CFMRadioDevice*)lpParam)->StreamAudio();
+		// Wait next turn
 		Sleep (RADIO_TIMER_PERIOD);
 	}
 
+	// Got here, then we've been requested to quit (Shouldquit=true)
 	return 0;
 }
 
 DWORD WINAPI RDSThread( LPVOID lpParam )
 {
-	int LastFreq;
-
 	while(!ShouldQuit) {
-		// This prevents *MOST* of the RDS garbage left in the read pipe after switching freqs
-		//if (LastFreq != CurrFreq) { LastFreq = CurrFreq; Sleep(1200); }
 		// Updat RDS
 		((CFMRadioDevice*)lpParam)->updateRDSData(&rdsTimerData);
+		// Wait next turn
 		Sleep (RDS_TIMER_PERIOD);
 	}
 
+	// Got here, then we've been requested to quit (Shouldquit=true)
 	return 0;
 }
-
 
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
@@ -225,8 +216,6 @@ bool CFMRadioDevice::RRadioText (char windowName[256], short dwData, char lpData
 
 bool CFMRadioDevice::GetRDSData(RDSData* rdsData) {
 
-	static lastPIValidation = 5;
-
 	if (&rdsTimerData) {
 
 		//Store all the current RDS data in the rds Data structure
@@ -237,33 +226,6 @@ bool CFMRadioDevice::GetRDSData(RDSData* rdsData) {
 		}
 		else 
 			rdsData->isStereo = (m_RDS.m_ptyDisplay!=0);
-
-#ifdef DOLOG
-	outfile << "Checking LastPI: " << lastPI << " Current: "<< m_RDS.m_piDisplay << "\n";
-#endif
-
-	// Prevents *MOST* Lagged RDS info from previous tuned statinon from being displayed
-	if ((lastPI != 0 && m_RDS.m_piDisplay == lastPI) || m_RDS.m_piDisplay == 0) {
-		rdsData->rdsText = "";
-		rdsData->rdsPS = "";
-		rdsData->rdsPI = 0;
-		rdsData->rdsPTY = 0;
-		rdsData->rdsPTYString = "";
-		return true;
-	} else if (lastPI != 0) {
-		if (lastPIValidation-->0) {
-			rdsData->rdsText = "";
-			rdsData->rdsPS = "";
-			rdsData->rdsPI = 0;
-			rdsData->rdsPTY = 0;
-			rdsData->rdsPTYString = "";
-			return true;
-		} else {
-			lastPIValidation = 5;
-		}
-	} 
-
-	lastPI = 0;
 
 		// Radio Text
 		if (rdsData->rdsText != m_RDS.m_RDSText) {
@@ -354,10 +316,6 @@ bool CFMRadioDevice::updateRDSData(RDSData* rdsData)
 void CFMRadioDevice::ResetRDSText()
 {
 	//Resets the RDS text in the RDS Data (used when switching channels)
-	lastPI = (lastPI==m_RDS.m_piDisplay)?-1:m_RDS.m_piDisplay;
-#ifdef DOLOG
-	outfile << "Saving LastPI: " << lastPI << "\n";
-#endif
 	m_RDS.ResetRDSText();
 }
 
@@ -1311,7 +1269,7 @@ double CFMRadioDevice::CalculateStationFrequency(FMRADIO_REGISTER hexChannel)
 	}
 	
 	//Calculate the frequency and add .0001 to round up numbers not quite close enough to the frequency
-	frequency = floor(((band + (spacing * channel)) + .0001) * 100.0) / 100.0;
+	frequency = (int)(((band + (spacing * channel)) + .0001) * 100.0) / 100.0;
 
 	return frequency;
 }
@@ -1869,4 +1827,3 @@ bool CFMRadioDevice::DestroyRadioTimer()
 
 	return true;
 }
-

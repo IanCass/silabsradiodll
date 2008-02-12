@@ -3,25 +3,18 @@
 //////////////////////////////////////////////////////////////////////
 
 #include "stdafx.h"
+#include "FMRadioDevice.h"
 #include "USBRadio.h"
 #include "RDSData.h"
-#include "FMRadioDevice.h"
-#include <map>
-#include <bitset>
 
-
-#ifdef _DEBUG
-#undef THIS_FILE
-static char THIS_FILE[]=__FILE__;
-#define new DEBUG_NEW
-#endif
-
+//////////// DEBUG ////////////
 //#define DOLOG
-
 #ifdef DOLOG
 #include <fstream>
+#include <bitset>
 static std::ofstream outfile;
 #endif
+//////////////////////////////
 
 //////////////////////////////////////////////////////////////////////
 // Construction/Destruction
@@ -150,7 +143,6 @@ void CRDSData::UpdateRDSText(WORD* registers)
 		validation_limit = 6;
 	}
 
-
 	m_RdsDataAvailable = 0;
 
     //UpdateRDSFifo(registers);
@@ -168,7 +160,13 @@ void CRDSData::UpdateRDSText(WORD* registers)
 	{
         update_pi(registers[RDSC]);
 	}
-    
+
+	// Wait while PI code doesn't change to process other RDS info (Same PI normally means garbage from before tuning/seeking)
+   	if ((lastPI != 0 && m_piDisplay == lastPI) || m_piDisplay == 0) {
+		return;
+	}
+	lastPI = 0;
+
     // update pty code.  
     update_pty((registers[RDSB]>>5) & 0x1f); 
 
@@ -210,7 +208,6 @@ void CRDSData::UpdateRDSText(WORD* registers)
 	}
 
 #ifdef DOLOG
-	//
 	switch (group_type) {
 		case RDS_TYPE_0A:
 					outfile << "0A";
@@ -309,7 +306,6 @@ void CRDSData::UpdateRDSText(WORD* registers)
 					outfile << "15B";
 					break;
 	}
-		
 
 	outfile 
 		<< " [A=" << std::bitset<16>(registers[RDSA]) << ","
@@ -317,7 +313,6 @@ void CRDSData::UpdateRDSText(WORD* registers)
 		<< " [C=" << std::bitset<16>(registers[RDSC]) << ","
 		<< " [D=" << std::bitset<16>(registers[RDSD]) << ","
 		<< "]\n";
-	// */
 #endif
 
     switch (group_type) {
@@ -1004,5 +999,6 @@ void CRDSData::update_rt(bool abFlag, BYTE count, BYTE addr, BYTE* byte, BYTE er
 void CRDSData::ResetRDSText()
 {
 	//Re-initialize the RDS
+	lastPI = (lastPI==m_piDisplay)?-1:m_piDisplay;
 	InitRDS();
 }
