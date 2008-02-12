@@ -4,9 +4,6 @@
 #include "stdafx.h"
 #include "USBRadio.h"
 #include "FMRadioDevice.h"
-#include "WTypes.h"
-
-#include <fstream>
 
 static CFMRadioDevice fmRadioDevice(true);
 static RadioData radioData;
@@ -52,8 +49,6 @@ CloseFMRadio (CFMRadioDevice* fmDevice)
 	return (false);
 }
 
-
-
 bool
 GetRDSInfo (CFMRadioDevice* fmDevice, RDSData* rdsData)
 {
@@ -86,14 +81,13 @@ FMTune (long frequency)
 	return (fmRadioDevice.Tune((double)frequency/1000));
 }
 
-
 //
 // Radiator Interface support
 //
 USBRADIO_API char* __stdcall
 GetModuleName ()
 {
-	return ("Silicon Labs USB FM Radio Reference Design (Appy v0.1)");
+	return ("SiLabs USB FM Radio (http://silabsradiodll.googlecode.com)");
 }
 
 USBRADIO_API unsigned long __stdcall
@@ -219,7 +213,6 @@ FMTuneDown ()
 	return (fmRadioDevice.Tune(false));
 }
 
-
 USBRADIO_API bool __stdcall VB_GetModuleName (char szReturnModuleName[256], short *iSize)
 {
 
@@ -302,8 +295,6 @@ USBRADIO_API bool __stdcall VB_GetRDSPI (int *rdsPI)
 {
 	RDSData rds_data;
 
-
-
 	if (fmRadioDevice.GetRDSData(&rds_data)) {
 		*rdsPI = rds_data.rdsPI;
 		return true;
@@ -361,7 +352,6 @@ USBRADIO_API bool __stdcall VB_GetRDSTP (bool *res)
 	}
 }
 
-
 USBRADIO_API bool __stdcall VB_GetRDSTA (bool *res)
 {
 	RDSData rds_data;
@@ -400,7 +390,6 @@ USBRADIO_API bool __stdcall VB_GetAFList (float* ary, int* arysize) {
 		return false;
 	}
 }
-
 
 USBRADIO_API bool __stdcall VB_GetRadioRegisters (char szRetBuf[256], short *iRetBufSize)
 {
