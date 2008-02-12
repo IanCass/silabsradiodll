@@ -16,7 +16,6 @@ static std::ofstream outfile;
 //////////////////////////////
 
 #define RADIO_TIMER_PERIOD 30	/* Call StreamAudio every RADIO_TIMER_PERIOD ms */
-#define RDS_TIMER_PERIOD 40		/* Call updateRDSData every RDS_TIMER_PERIOD ms */
 
 static RDSData rdsTimerData;	/* Variable Outside Class for Direct Thread access */
 static bool ShouldQuit;			/* Variable Outside Class for Direct Thread access */
@@ -28,23 +27,14 @@ DWORD WINAPI RadioThread( LPVOID lpParam )
 	while(!ShouldQuit) {
 		//If new freq waiting to be tuned, do it
 		if (QueFreq != CurrFreq) ((CFMRadioDevice*)lpParam)->DoTune((double)QueFreq/10);
+		// Update RDS *FIRST*
+		EnterCriticalSection(&gRDSCriticalSection);
+		((CFMRadioDevice*)lpParam)->updateRDSData(&rdsTimerData);
+		LeaveCriticalSection(&gRDSCriticalSection);
 		// Process Audio
 		((CFMRadioDevice*)lpParam)->StreamAudio();
 		// Wait next turn
 		Sleep (RADIO_TIMER_PERIOD);
-	}
-
-	// Got here, then we've been requested to quit (Shouldquit=true)
-	return 0;
-}
-
-DWORD WINAPI RDSThread( LPVOID lpParam )
-{
-	while(!ShouldQuit) {
-		// Updat RDS
-		((CFMRadioDevice*)lpParam)->updateRDSData(&rdsTimerData);
-		// Wait next turn
-		Sleep (RDS_TIMER_PERIOD);
 	}
 
 	// Got here, then we've been requested to quit (Shouldquit=true)
@@ -66,6 +56,7 @@ CFMRadioDevice::CFMRadioDevice(bool GetRDSText)
 
 	//Initialize the critical section variable used for exclusivity
 	InitializeCriticalSection(&gWaveCriticalSection);
+	InitializeCriticalSection(&gRDSCriticalSection);
 
 	//Make the handles NULL to begin with
 	m_FMRadioAudioHandle = NULL;
@@ -216,7 +207,9 @@ bool CFMRadioDevice::RRadioText (char windowName[256], short dwData, char lpData
 
 bool CFMRadioDevice::GetRDSData(RDSData* rdsData) {
 
+	
 	if (&rdsTimerData) {
+		EnterCriticalSection(&gRDSCriticalSection);
 
 		//Store all the current RDS data in the rds Data structure
 		rdsData->currentStation = (double)QueFreq/10; // CalculateStationFrequency(m_Register[READCHAN] & READCHAN_READCHAN);
@@ -259,6 +252,7 @@ bool CFMRadioDevice::GetRDSData(RDSData* rdsData) {
 		// AF
 		rdsData->AFMap = m_RDS.AFMap;
 
+		LeaveCriticalSection(&gRDSCriticalSection);
 		return true;
 	} else {
 		return false;
@@ -636,7 +630,7 @@ bool CFMRadioDevice::StreamAudioOut()
 		{
 			//waveOutProc callback function will get called, and free block counter gets incremented
 			if (!m_AudioAllowed)
-				if (gWaveFreeBlockCount == 1) waveOutProc(0, WOM_DONE, (DWORD)&gWaveFreeBlockCount, 0, 0);
+				if (gWaveFreeBlockCount == 0) waveOutProc(0, WOM_DONE, (DWORD)&gWaveFreeBlockCount, 0, 0);
 
 			//Increment the index of the current block to be played
 			m_CurrentBlock++;
@@ -808,8 +802,8 @@ bool CFMRadioDevice::OpenFMRadioData()
 				if (detailResult)
 				{
 					//Open the device				
-					hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
-					//hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, NULL, NULL);
+					//hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+					hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, NULL, NULL);
 
 					if (hHidDeviceHandle != INVALID_HANDLE_VALUE)
 					{
@@ -1010,7 +1004,7 @@ bool CFMRadioDevice::Mute(bool mute)
 	else
 	{
 		m_AudioAllowed = true;
-		for(int i=0;i++;i<BLOCK_COUNT)
+		if (gWaveFreeBlockCount)
 			StreamAudioOut();
 	}
 
@@ -1547,7 +1541,6 @@ bool CFMRadioDevice::SetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer, DWORD dataBufferSize)
 {
 	bool status = false;
-	char op[256];
 
 	//Make sure our handle isn't NULL
 	if (m_FMRadioDataHandle)
@@ -1579,13 +1572,13 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 			else if (report == RDS_REPORT)
 			{
 				DWORD bytesRead;
-				OVERLAPPED o;
+				//OVERLAPPED o;
 
-				memset(&o, 0, sizeof(OVERLAPPED));
+				//memset(&o, 0, sizeof(OVERLAPPED));
 
-				o.Offset     = 0; 
-				o.OffsetHigh = 0; 
-				o.hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+				//o.Offset     = 0; 
+				//o.OffsetHigh = 0; 
+				//o.hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
 
 				//Clear out endpoint 1 buffer
 				memset(m_pEndpoint1ReportBuffer, 0, m_Endpoint1ReportBufferSize);
@@ -1593,7 +1586,7 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 				//Assign the first item in the array to the report number to read
 				m_pEndpoint1ReportBuffer[0] = RDS_REPORT;
 
-				ReadFile(m_FMRadioDataHandle, m_pEndpoint1ReportBuffer, m_Endpoint1ReportBufferSize, &bytesRead, &o);
+				ReadFile(m_FMRadioDataHandle, m_pEndpoint1ReportBuffer, m_Endpoint1ReportBufferSize, &bytesRead, NULL);
 				status = (bytesRead == m_Endpoint1ReportBufferSize);
 #ifdef DOLOG
 	outfile << "Bytes Read: " << bytesRead << " (of " << m_Endpoint1ReportBufferSize << ")\n";
@@ -1617,19 +1610,22 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 
 						GetOverlappedResult(m_FMRadioDataHandle, &o, &bytesRead, TRUE);
 					
+						//char op[256];
 						//sprintf(op, "Overlapped Result, len = %d %s\n", bytesRead, m_pEndpoint1ReportBuffer);
 						//OutputDebugString(op);
 					}
 				}
 				else 
 				{
+					//char op[256];
 					//sprintf(op, "Non Overlapped Result, len = %d %s\n", bytesRead, m_pEndpoint1ReportBuffer);
 					//OutputDebugString(op);
 					status = true;
 				}
-*/
+
 				//Close the object
 				CloseHandle(o.hEvent);
+*/
 				
 
 				//If the read succeeded, assign returned data to the dataBuffer
@@ -1781,7 +1777,6 @@ bool CFMRadioDevice::SetStreamReport(BYTE report, BYTE* dataBuffer, DWORD dataBu
 
 bool CFMRadioDevice::CreateRadioTimer()
 {
-	bool ret;
 	DWORD ThreadID;
 
 	if (h_radioTimer) {
@@ -1794,9 +1789,7 @@ bool CFMRadioDevice::CreateRadioTimer()
 
 	// Create our Radio & RDS threads
 	h_radioTimer = CreateThread(NULL, 0, RadioThread, this, 0, &ThreadID); 
-	h_rdsTimer = CreateThread(NULL, 0, RDSThread, this, 0, &ThreadID); 
 	SetThreadPriority(h_radioTimer, THREAD_PRIORITY_TIME_CRITICAL);
-	SetThreadPriority(h_rdsTimer, THREAD_PRIORITY_TIME_CRITICAL);
 
 	m_StreamingAllowed = true;
 
@@ -1805,9 +1798,6 @@ bool CFMRadioDevice::CreateRadioTimer()
 
 bool CFMRadioDevice::DestroyRadioTimer()
 {
-	bool ret;
-	HANDLE thread_handle;
-
 	if (!h_radioTimer) {
 		// Already destroyed, or not created!
 		return (false);
@@ -1822,8 +1812,6 @@ bool CFMRadioDevice::DestroyRadioTimer()
 
 	// Set they've been terminated
 	h_radioTimer = NULL;
-
-	h_rdsTimer = NULL;
 
 	return true;
 }
