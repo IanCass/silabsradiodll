@@ -460,6 +460,7 @@ private:
 	void		FreeBlocks(WAVEHDR*);
 
 	HANDLE h_radioTimer;
+	HANDLE h_rdsTimer;
 
 ////////////////////////////
 ////////////////////////////

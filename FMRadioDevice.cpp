@@ -16,6 +16,7 @@ static std::ofstream outfile;
 //////////////////////////////
 
 #define RADIO_TIMER_PERIOD 30	/* Call StreamAudio every RADIO_TIMER_PERIOD ms */
+#define RDS_TIMER_PERIOD   20	/* Call updateRDSData every RDS_TIMER_PERIOD ms */
 
 static RDSData rdsTimerData;	/* Variable Outside Class for Direct Thread access */
 static bool ShouldQuit;			/* Variable Outside Class for Direct Thread access */
@@ -29,12 +30,23 @@ DWORD WINAPI RadioThread( LPVOID lpParam )
 		if (QueFreq != CurrFreq) ((CFMRadioDevice*)lpParam)->DoTune((double)QueFreq/10);
 		// Process Audio
 		((CFMRadioDevice*)lpParam)->StreamAudio();
+		// Wait next turn
+		Sleep (RADIO_TIMER_PERIOD);
+	}
+
+	// Got here, then we've been requested to quit (Shouldquit=true)
+	return 0;
+}
+
+DWORD WINAPI RDSThread( LPVOID lpParam )
+{
+	while(!ShouldQuit) {
 		// Update RDS *FIRST*
 		EnterCriticalSection(&gRDSCriticalSection);
 		((CFMRadioDevice*)lpParam)->updateRDSData(&rdsTimerData);
 		LeaveCriticalSection(&gRDSCriticalSection);
 		// Wait next turn
-		Sleep (RADIO_TIMER_PERIOD);
+		Sleep (RDS_TIMER_PERIOD);
 	}
 
 	// Got here, then we've been requested to quit (Shouldquit=true)
@@ -1596,21 +1608,20 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 #ifdef DOLOG
 	outfile << "Bytes NOT Read: " << bytesRead << " (of " << m_Endpoint1ReportBufferSize << ")\n";
 #endif
-
 					// If it didn't go through, then wait on the object to complete the read
 					DWORD error = GetLastError();
 					if (error == ERROR_IO_PENDING) 
 					{
-
-						if (WaitForSingleObject(o.hEvent, 3000))
-							status = true;
-
-						GetOverlappedResult(m_FMRadioDataHandle, &o, &bytesRead, TRUE);
-					
-						//char op[256];
-						//sprintf(op, "Overlapped Result, len = %d %s\n", bytesRead, m_pEndpoint1ReportBuffer);
-						//OutputDebugString(op);
-
+						//if (WaitForSingleObject(o.hEvent, 3000) == 0) {
+							if (GetOverlappedResult(m_FMRadioDataHandle, &o, &bytesRead, TRUE)) {
+								//sprintf(op, "Overlapped Result, len = %d %s\n", bytesRead, m_pEndpoint1ReportBuffer);
+								//OutputDebugString(op);
+								status = true;
+							}
+						//} else {
+						//	sprintf(op, "WaitForSingleObject failed");
+						//	OutputDebugString(op);
+						//}
 					}
 				}
 				else 
@@ -1622,7 +1633,6 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 #ifdef DOLOG
 	outfile << "Bytes Read: " << bytesRead << " (of " << m_Endpoint1ReportBufferSize << ")\n";
 #endif
-
 				}
 
 				//Close the object
@@ -1791,6 +1801,8 @@ bool CFMRadioDevice::CreateRadioTimer()
 	// Create our Radio & RDS threads
 	h_radioTimer = CreateThread(NULL, 0, RadioThread, this, 0, &ThreadID); 
 	SetThreadPriority(h_radioTimer, THREAD_PRIORITY_TIME_CRITICAL);
+	h_rdsTimer = CreateThread(NULL, 0, RDSThread, this, 0, &ThreadID); 
+	SetThreadPriority(h_rdsTimer, THREAD_PRIORITY_TIME_CRITICAL);
 
 	m_StreamingAllowed = true;
 
@@ -1813,6 +1825,7 @@ bool CFMRadioDevice::DestroyRadioTimer()
 
 	// Set they've been terminated
 	h_radioTimer = NULL;
+	h_rdsTimer = NULL;
 
 	return true;
 }
