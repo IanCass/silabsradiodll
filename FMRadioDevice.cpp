@@ -27,12 +27,12 @@ DWORD WINAPI RadioThread( LPVOID lpParam )
 	while(!ShouldQuit) {
 		//If new freq waiting to be tuned, do it
 		if (QueFreq != CurrFreq) ((CFMRadioDevice*)lpParam)->DoTune((double)QueFreq/10);
+		// Process Audio
+		((CFMRadioDevice*)lpParam)->StreamAudio();
 		// Update RDS *FIRST*
 		EnterCriticalSection(&gRDSCriticalSection);
 		((CFMRadioDevice*)lpParam)->updateRDSData(&rdsTimerData);
 		LeaveCriticalSection(&gRDSCriticalSection);
-		// Process Audio
-		((CFMRadioDevice*)lpParam)->StreamAudio();
 		// Wait next turn
 		Sleep (RADIO_TIMER_PERIOD);
 	}
@@ -802,8 +802,8 @@ bool CFMRadioDevice::OpenFMRadioData()
 				if (detailResult)
 				{
 					//Open the device				
-					//hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
-					hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, NULL, NULL);
+					hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+					//hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, NULL, NULL);
 
 					if (hHidDeviceHandle != INVALID_HANDLE_VALUE)
 					{
@@ -1572,13 +1572,12 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 			else if (report == RDS_REPORT)
 			{
 				DWORD bytesRead;
-				//OVERLAPPED o;
 
-				//memset(&o, 0, sizeof(OVERLAPPED));
-
-				//o.Offset     = 0; 
-				//o.OffsetHigh = 0; 
-				//o.hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+				OVERLAPPED o;
+				memset(&o, 0, sizeof(OVERLAPPED));
+				o.Offset     = 0; 
+				o.OffsetHigh = 0; 
+				o.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 
 				//Clear out endpoint 1 buffer
 				memset(m_pEndpoint1ReportBuffer, 0, m_Endpoint1ReportBufferSize);
@@ -1586,20 +1585,18 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 				//Assign the first item in the array to the report number to read
 				m_pEndpoint1ReportBuffer[0] = RDS_REPORT;
 
-				ReadFile(m_FMRadioDataHandle, m_pEndpoint1ReportBuffer, m_Endpoint1ReportBufferSize, &bytesRead, NULL);
-				status = (bytesRead == m_Endpoint1ReportBufferSize);
-#ifdef DOLOG
-	outfile << "Bytes Read: " << bytesRead << " (of " << m_Endpoint1ReportBufferSize << ")\n";
-#endif
+				//ReadFile(m_FMRadioDataHandle, m_pEndpoint1ReportBuffer, m_Endpoint1ReportBufferSize, &bytesRead, NULL);
+				//status = (bytesRead == m_Endpoint1ReportBufferSize);
 
-/*
 				//Sleep(30); // FUCKING Overlapped IO doesn't work which makes this necessary
 
 				//Call a read file on the data handle to read in from endpoint 1
-				//if (!ReadFile(m_FMRadioDataHandle, m_pEndpoint1ReportBuffer, m_Endpoint1ReportBufferSize, &bytesRead, &o))
-				if (!ReadFile(m_FMRadioDataHandle, m_pEndpoint1ReportBuffer, m_Endpoint1ReportBufferSize, &bytesRead, NULL))
-
+				if (!ReadFile(m_FMRadioDataHandle, m_pEndpoint1ReportBuffer, m_Endpoint1ReportBufferSize, &bytesRead, &o))
 				{
+#ifdef DOLOG
+	outfile << "Bytes NOT Read: " << bytesRead << " (of " << m_Endpoint1ReportBufferSize << ")\n";
+#endif
+
 					// If it didn't go through, then wait on the object to complete the read
 					DWORD error = GetLastError();
 					if (error == ERROR_IO_PENDING) 
@@ -1613,6 +1610,7 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 						//char op[256];
 						//sprintf(op, "Overlapped Result, len = %d %s\n", bytesRead, m_pEndpoint1ReportBuffer);
 						//OutputDebugString(op);
+
 					}
 				}
 				else 
@@ -1621,12 +1619,15 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 					//sprintf(op, "Non Overlapped Result, len = %d %s\n", bytesRead, m_pEndpoint1ReportBuffer);
 					//OutputDebugString(op);
 					status = true;
+#ifdef DOLOG
+	outfile << "Bytes Read: " << bytesRead << " (of " << m_Endpoint1ReportBufferSize << ")\n";
+#endif
+
 				}
 
 				//Close the object
 				CloseHandle(o.hEvent);
-*/
-				
+// */
 
 				//If the read succeeded, assign returned data to the dataBuffer
 				if (status)
