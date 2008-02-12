@@ -24,6 +24,14 @@ static bool ShouldQuit;
 static int CurrFreq;
 static int QueFreq;
 static bool Tuned;
+static int lastPI = 0;
+
+//#define DOLOG
+
+#ifdef DOLOG
+#include <fstream>
+static std::ofstream outfile;
+#endif
 
 DWORD WINAPI RadioThread( LPVOID lpParam )
 {
@@ -42,7 +50,7 @@ DWORD WINAPI RDSThread( LPVOID lpParam )
 
 	while(!ShouldQuit) {
 		// This prevents *MOST* of the RDS garbage left in the read pipe after switching freqs
-		if (LastFreq != CurrFreq) { LastFreq = CurrFreq; Sleep(1200); }
+		//if (LastFreq != CurrFreq) { LastFreq = CurrFreq; Sleep(1200); }
 		// Updat RDS
 		((CFMRadioDevice*)lpParam)->updateRDSData(&rdsTimerData);
 		Sleep (RDS_TIMER_PERIOD);
@@ -58,6 +66,13 @@ DWORD WINAPI RDSThread( LPVOID lpParam )
 
 CFMRadioDevice::CFMRadioDevice(bool GetRDSText)
 {
+
+#ifdef DOLOG
+	char output [100];
+	outfile.open("c:\\log.txt", std::ofstream::app);
+	outfile << "FM Log Started\n";
+#endif
+
 	//Initialize the critical section variable used for exclusivity
 	InitializeCriticalSection(&gWaveCriticalSection);
 
@@ -210,16 +225,45 @@ bool CFMRadioDevice::RRadioText (char windowName[256], short dwData, char lpData
 
 bool CFMRadioDevice::GetRDSData(RDSData* rdsData) {
 
+	static lastPIValidation = 5;
+
 	if (&rdsTimerData) {
 
 		//Store all the current RDS data in the rds Data structure
 		rdsData->currentStation = (double)QueFreq/10; // CalculateStationFrequency(m_Register[READCHAN] & READCHAN_READCHAN);
 		rdsData->recievedSignalStrength = m_Register[STATUSRSSI] & STATUSRSSI_RSSI;
 		if(rdsData->recievedSignalStrength > 15) {
-			rdsData->isStereo = (((m_Register[STATUSRSSI] & STATUSRSSI_ST) >> 8) == DATA_MONOSTEREO_STEREO)?true:false;
+			rdsData->isStereo = (((m_Register[STATUSRSSI] & STATUSRSSI_ST) >> 8) == DATA_MONOSTEREO_STEREO)||(m_RDS.m_ptyDisplay!=0)?true:false;
 		}
 		else 
-			rdsData->isStereo = false;
+			rdsData->isStereo = (m_RDS.m_ptyDisplay!=0);
+
+#ifdef DOLOG
+	outfile << "Checking LastPI: " << lastPI << " Current: "<< m_RDS.m_piDisplay << "\n";
+#endif
+
+	// Prevents *MOST* Lagged RDS info from previous tuned statinon from being displayed
+	if ((lastPI != 0 && m_RDS.m_piDisplay == lastPI) || m_RDS.m_piDisplay == 0) {
+		rdsData->rdsText = "";
+		rdsData->rdsPS = "";
+		rdsData->rdsPI = 0;
+		rdsData->rdsPTY = 0;
+		rdsData->rdsPTYString = "";
+		return true;
+	} else if (lastPI != 0) {
+		if (lastPIValidation-->0) {
+			rdsData->rdsText = "";
+			rdsData->rdsPS = "";
+			rdsData->rdsPI = 0;
+			rdsData->rdsPTY = 0;
+			rdsData->rdsPTYString = "";
+			return true;
+		} else {
+			lastPIValidation = 5;
+		}
+	} 
+
+	lastPI = 0;
 
 		// Radio Text
 		if (rdsData->rdsText != m_RDS.m_RDSText) {
@@ -245,7 +289,7 @@ bool CFMRadioDevice::GetRDSData(RDSData* rdsData) {
 			rdsData->rdsPTYString = m_RDS.m_ptyDisplayString;
 		}
 
-		// TA, TP, PS
+		// TA, TP, MS
 		rdsData->rdsTA = m_RDS.m_ta;
 		rdsData->rdsTP = m_RDS.m_tp;
 		rdsData->rdsMS = m_RDS.m_ms;
@@ -310,6 +354,10 @@ bool CFMRadioDevice::updateRDSData(RDSData* rdsData)
 void CFMRadioDevice::ResetRDSText()
 {
 	//Resets the RDS text in the RDS Data (used when switching channels)
+	lastPI = (lastPI==m_RDS.m_piDisplay)?-1:m_RDS.m_piDisplay;
+#ifdef DOLOG
+	outfile << "Saving LastPI: " << lastPI << "\n";
+#endif
 	m_RDS.ResetRDSText();
 }
 
@@ -802,8 +850,8 @@ bool CFMRadioDevice::OpenFMRadioData()
 				if (detailResult)
 				{
 					//Open the device				
-					//hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
-					hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, NULL, NULL);
+					hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+					//hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, NULL, NULL);
 
 					if (hHidDeviceHandle != INVALID_HANDLE_VALUE)
 					{
@@ -1587,6 +1635,13 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 				//Assign the first item in the array to the report number to read
 				m_pEndpoint1ReportBuffer[0] = RDS_REPORT;
 
+				ReadFile(m_FMRadioDataHandle, m_pEndpoint1ReportBuffer, m_Endpoint1ReportBufferSize, &bytesRead, &o);
+				status = (bytesRead == m_Endpoint1ReportBufferSize);
+#ifdef DOLOG
+	outfile << "Bytes Read: " << bytesRead << " (of " << m_Endpoint1ReportBufferSize << ")\n";
+#endif
+
+/*
 				//Sleep(30); // FUCKING Overlapped IO doesn't work which makes this necessary
 
 				//Call a read file on the data handle to read in from endpoint 1
@@ -1594,7 +1649,7 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 				if (!ReadFile(m_FMRadioDataHandle, m_pEndpoint1ReportBuffer, m_Endpoint1ReportBufferSize, &bytesRead, NULL))
 
 				{
-					//If it didn't go through, then wait on the object to complete the read
+					// If it didn't go through, then wait on the object to complete the read
 					DWORD error = GetLastError();
 					if (error == ERROR_IO_PENDING) 
 					{
@@ -1614,9 +1669,10 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 					//OutputDebugString(op);
 					status = true;
 				}
-
+*/
 				//Close the object
 				CloseHandle(o.hEvent);
+				
 
 				//If the read succeeded, assign returned data to the dataBuffer
 				if (status)

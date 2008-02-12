@@ -7,7 +7,6 @@
 #include "RDSData.h"
 #include "FMRadioDevice.h"
 #include <map>
-#include <fstream>
 #include <bitset>
 
 
@@ -20,6 +19,7 @@ static char THIS_FILE[]=__FILE__;
 //#define DOLOG
 
 #ifdef DOLOG
+#include <fstream>
 static std::ofstream outfile;
 #endif
 
@@ -664,7 +664,8 @@ void CRDSData::update_pi(WORD current_pi)
 
 void CRDSData::update_pty(BYTE current_pty)
 {
-    static BYTE rds_pty_validate_count = 0;
+    
+	static BYTE rds_pty_validate_count = 0;
     static BYTE rds_pty_nonvalidated = 0;
     
     // if the pty value is the same for a certain number of times, update
@@ -682,7 +683,7 @@ void CRDSData::update_pty(BYTE current_pty)
     if (rds_pty_validate_count > validation_limit)
 	{
         m_ptyDisplay = rds_pty_nonvalidated;
-
+	
 		switch (m_ptyDisplay) {
 			case 1: m_ptyDisplayString = "News";break;
 			case 2: m_ptyDisplayString = "Current Affairs";break;
