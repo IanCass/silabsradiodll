@@ -790,8 +790,8 @@ bool CFMRadioDevice::OpenFMRadioData()
 				if (detailResult)
 				{
 					//Open the device				
-					//hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
-					hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, NULL, NULL);
+					hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
+					//hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, NULL, NULL);
 
 					if (hHidDeviceHandle != INVALID_HANDLE_VALUE)
 					{
@@ -1062,7 +1062,7 @@ bool CFMRadioDevice::Tune(double frequency)
 		//bool reEnableAudio = m_Streaming;
 		//m_Tuning = true;
 		//CloseFMRadioAudio();
-		DestroyRDSTimer();
+		//DestroyRDSTimer();
 
 
 		//Use set feature to set the channel
@@ -1095,7 +1095,7 @@ bool CFMRadioDevice::Tune(double frequency)
 				GetSystemTime(&systemTime);
 				if ((systemTime.wSecond - startTime) > POLL_TIMEOUT_SECONDS)
 					error = true;
-				//Sleep(3);
+				Sleep(3);
 			}
 
 			//Once we are out of the polling loop, if there was no error and tune completed, clear 
@@ -1129,7 +1129,7 @@ bool CFMRadioDevice::Tune(double frequency)
 
 		//Set tuning back to false
 		//m_Tuning = false;
-		CreateRDSTimer();
+		//CreateRDSTimer();
 	}	
 
 	if (status) {
@@ -1165,7 +1165,7 @@ bool CFMRadioDevice::Seek(bool seekUp)
 	//bool reEnableAudio = m_Streaming;
 	//m_Tuning = true;
 	//CloseFMRadioAudio();
-	DestroyRDSTimer();
+	//DestroyRDSTimer();
 
 
 	//Use set feature to set the channel
@@ -1196,7 +1196,7 @@ bool CFMRadioDevice::Seek(bool seekUp)
 			GetSystemTime(&systemTime);
 			if ((systemTime.wSecond - startTime) > POLL_TIMEOUT_SECONDS)
 				error = true;
-			//Sleep(3);
+			Sleep(3);
 		}
 
 		//Once we are out of the polling loop, if there was no error and tune completed, clear 
@@ -1205,11 +1205,8 @@ bool CFMRadioDevice::Seek(bool seekUp)
 		{
 
 			m_Register[POWERCFG] &= ~POWERCFG_SEEK;
-
-
 			if (SetRegisterReport(POWERCFG_REPORT, &m_Register[POWERCFG], 1))
 				status = true;
-
 			GetRegisterReport(READCHAN_REPORT, &m_Register[READCHAN], 1);
 		}
 	}
@@ -1221,7 +1218,7 @@ bool CFMRadioDevice::Seek(bool seekUp)
 
 	}
 
-	CreateRDSTimer();
+	//CreateRDSTimer();
 
 	//Reopen the FM Radio Audio
 	//OpenFMRadioAudio();
@@ -1582,7 +1579,7 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 
 				o.Offset     = 0; 
 				o.OffsetHigh = 0; 
-				o.hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+				o.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 
 				//Clear out endpoint 1 buffer
 				memset(m_pEndpoint1ReportBuffer, 0, m_Endpoint1ReportBufferSize);
@@ -1593,8 +1590,8 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 				//Sleep(30); // FUCKING Overlapped IO doesn't work which makes this necessary
 
 				//Call a read file on the data handle to read in from endpoint 1
-				//if (!ReadFile(m_FMRadioDataHandle, m_pEndpoint1ReportBuffer, m_Endpoint1ReportBufferSize, &bytesRead, &o))
-				if (!ReadFile(m_FMRadioDataHandle, m_pEndpoint1ReportBuffer, m_Endpoint1ReportBufferSize, &bytesRead, NULL))
+				if (!ReadFile(m_FMRadioDataHandle, m_pEndpoint1ReportBuffer, m_Endpoint1ReportBufferSize, &bytesRead, &o))
+				//if (!ReadFile(m_FMRadioDataHandle, m_pEndpoint1ReportBuffer, m_Endpoint1ReportBufferSize, &bytesRead, NULL))
 
 				{
 					//If it didn't go through, then wait on the object to complete the read
@@ -1602,19 +1599,25 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 					if (error == ERROR_IO_PENDING) 
 					{
 
-						if (WaitForSingleObject(o.hEvent, 3000))
-							status = true;
+						//if (WaitForSingleObject(o.hEvent, 3000) == 0) {
 
-						GetOverlappedResult(m_FMRadioDataHandle, &o, &bytesRead, TRUE);
+							if (GetOverlappedResult(m_FMRadioDataHandle, &o, &bytesRead, TRUE)) {
+								sprintf(op, "Overlapped Result, len = %d %s\n", bytesRead, m_pEndpoint1ReportBuffer);
+								OutputDebugString(op);
+								status = true;
+							}
+						//} else {
+						//	sprintf(op, "WaitForSingleObject failed");
+						//	OutputDebugString(op);
+						//}
 					
-						//sprintf(op, "Overlapped Result, len = %d %s\n", bytesRead, m_pEndpoint1ReportBuffer);
-						//OutputDebugString(op);
+
 					}
 				}
 				else 
 				{
-					//sprintf(op, "Non Overlapped Result, len = %d %s\n", bytesRead, m_pEndpoint1ReportBuffer);
-					//OutputDebugString(op);
+					sprintf(op, "Non Overlapped Result, len = %d %s\n", bytesRead, m_pEndpoint1ReportBuffer);
+					OutputDebugString(op);
 					status = true;
 				}
 
@@ -1858,7 +1861,7 @@ bool CFMRadioDevice::CreateRDSTimer()
 	NULL
 	);
 
-	//SetThreadPriority(h_rdsTimer, THREAD_PRIORITY_HIGHEST);
+	SetThreadPriority(h_rdsTimer, THREAD_PRIORITY_HIGHEST);
 	
 	ret = true;
     
@@ -1921,7 +1924,7 @@ bool CFMRadioDevice::CreateRadioTimer()
 	NULL
 	);
 
-	//SetThreadPriority(h_radioTimer, THREAD_PRIORITY_HIGHEST);
+	SetThreadPriority(h_radioTimer, THREAD_PRIORITY_HIGHEST);
 	
 	ret = true;
 	m_StreamingAllowed = ret ? true : false;
