@@ -225,6 +225,7 @@ Begin VB.Form frmMain
          Left            =   7080
          TabIndex        =   13
          Top             =   540
+         UseMnemonic     =   0   'False
          Width           =   3390
       End
       Begin VB.Label lblCountry 
@@ -243,6 +244,7 @@ Begin VB.Form frmMain
          Left            =   285
          TabIndex        =   12
          Top             =   540
+         UseMnemonic     =   0   'False
          Width           =   6450
       End
       Begin VB.Label lbl 
@@ -269,10 +271,10 @@ Begin VB.Form frmMain
    Begin VB.Frame Frame2 
       Caption         =   "Radio Text:"
       Height          =   1065
-      Left            =   285
+      Left            =   360
       TabIndex        =   7
-      Top             =   5970
-      Width           =   10695
+      Top             =   6000
+      Width           =   10635
       Begin VB.Label lblRadioTextA 
          BorderStyle     =   1  'Fixed Single
          BeginProperty Font 
@@ -285,10 +287,11 @@ Begin VB.Form frmMain
             Strikethrough   =   0   'False
          EndProperty
          Height          =   420
-         Left            =   165
+         Left            =   60
          TabIndex        =   8
-         Top             =   390
-         Width           =   10980
+         Top             =   420
+         UseMnemonic     =   0   'False
+         Width           =   10500
       End
    End
    Begin VB.Frame Frame1 
@@ -373,6 +376,7 @@ Begin VB.Form frmMain
          Left            =   480
          TabIndex        =   31
          Top             =   480
+         UseMnemonic     =   0   'False
          Width           =   2085
       End
       Begin VB.Label lblPI 
@@ -391,6 +395,7 @@ Begin VB.Form frmMain
          Left            =   480
          TabIndex        =   30
          Top             =   1080
+         UseMnemonic     =   0   'False
          Width           =   1650
       End
       Begin VB.Label lbl 
@@ -419,6 +424,7 @@ Begin VB.Form frmMain
          Left            =   2760
          TabIndex        =   5
          Top             =   1065
+         UseMnemonic     =   0   'False
          Width           =   420
       End
       Begin VB.Label lblPTYDescr 
@@ -436,6 +442,7 @@ Begin VB.Form frmMain
          Left            =   3360
          TabIndex        =   4
          Top             =   1080
+         UseMnemonic     =   0   'False
          Width           =   3105
       End
       Begin VB.Label lblTP 
