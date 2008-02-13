@@ -50,6 +50,9 @@ void CRDSData::InitRDS()
 	m_ta = false;
 	m_piRegion = "";
 	m_piCountry = "";
+	ecc = 0;
+	c_ecc = 0;
+	v_ecc = 0;
 
     // Reset RDS variables
 	m_RdsDataAvailable = 0;
@@ -139,9 +142,9 @@ void CRDSData::UpdateRDSText(WORD* registers)
 	if ((registers[STATUSRSSI] & STATUSRSSI_RSSI) > 35) {
 		validation_limit = 1;
 	} else if ((registers[STATUSRSSI] & STATUSRSSI_RSSI) > 31) {
-		validation_limit = 4;
+		validation_limit = 2;
 	} else {
-		validation_limit = 6;
+		validation_limit = 4;
 	}
 
 	m_RdsDataAvailable = 0;
@@ -367,6 +370,12 @@ void CRDSData::UpdateRDSText(WORD* registers)
 		// 1A, Program Item Number and Slow Labelling Codes
 	    case RDS_TYPE_1A:
 			//m_tp = (registers[RDSB] & 0x400 == 0x400)?true:false;
+			v_ecc = registers[RDSC] & 0xff;
+			if (c_ecc > validation_limit) {
+				ecc = v_ecc;
+			} else {
+				c_ecc++;
+			}
 		    break;
 
 		// 1B, Program Item Number and Slow Labelling Codes
@@ -635,24 +644,165 @@ void CRDSData::update_pi(WORD current_pi)
 		}
 
 		// Lookup country codes
-		switch (m_country) {
+		if (m_country && ecc) {
+			switch (m_country) {
+				case 0x1:
+					switch (ecc) {
+						case 0xe0: m_piCountry = "Germany";break;
+						case 0xe1: m_piCountry = "Greece";break;
+						case 0xe2: m_piCountry = "Morocco";break;
+						case 0xe4: m_piCountry = "Moldova";break;
+						default: m_piCountry = "Unknown";break;
+					}
+					break;
+				case 0x2:
+					switch (ecc) {
+						case 0xe0: m_piCountry = "Algeria";break;
+						case 0xe1: m_piCountry = "Cyprus";break;
+						case 0xe2: m_piCountry = "Czech Republic";break;
+						case 0xe3: m_piCountry = "Ireland";break;
+						case 0xe4: m_piCountry = "Estonia";break;
+						default: m_piCountry = "Unknown";break;
+					}
+					break;
+				case 0x3:
+					switch (ecc) {
+						case 0xe0: m_piCountry = "Andorra";break;
+						case 0xe1: m_piCountry = "San Marino";break;
+						case 0xe2: m_piCountry = "Poland";break;
+						case 0xe3: m_piCountry = "Turkey";break;
+						default: m_piCountry = "Unknown";break;
+					}
+					break;
+				case 0x4:
+					switch (ecc) {
+						case 0xe0: m_piCountry = "Israel";break;
+						case 0xe1: m_piCountry = "Switzerland";break;
+						case 0xe2: m_piCountry = "Vatican City";break;
+						case 0xe3: m_piCountry = "Macedonia";break;
+						default: m_piCountry = "Unknown";break;
+					}
+					break;
+				case 0x5:
+					switch (ecc) {
+						case 0xe0: m_piCountry = "Italy";break;
+						case 0xe1: m_piCountry = "Jordan";break;
+						case 0xe2: m_piCountry = "Slovakia";break;
+						default: m_piCountry = "Unknown";break;
+					}
+					break;
+				case 0x6:
+					switch (ecc) {
+						case 0xe0: m_piCountry = "Belgium";break;
+						case 0xe1: m_piCountry = "Finland";break;
+						case 0xe2: m_piCountry = "Syria";break;
+						case 0xe4: m_piCountry = "Ukraine";break;
+						default: m_piCountry = "Unknown";break;
+					}
+					break;
+				case 0x7:
+					switch (ecc) {
+						case 0xe0: m_piCountry = "Russia";break;
+						case 0xe1: m_piCountry = "Luxembourg";break;
+						case 0xe2: m_piCountry = "Tunisia";break;
+						default: m_piCountry = "Unknown";break;
+					}
+					break;
+				case 0x8:
+					switch (ecc) {
+						case 0xe0: m_piCountry = "Palestine";break;
+						case 0xe1: m_piCountry = "Bulgaria";break;
+						case 0xe3: m_piCountry = "Netherlands";break;
+						case 0xe4: m_piCountry = "Portugal";break;
+						default: m_piCountry = "Unknown";break;
+					}
+					break;
+				case 0x9:
+					switch (ecc) {
+						case 0xe0: m_piCountry = "Albania";break;
+						case 0xe1: m_piCountry = "Denmark";break;
+						case 0xe2: m_piCountry = "Litchenstein";break;
+						case 0xe3: m_piCountry = "Latvia";break;
+						case 0xe4: m_piCountry = "Portugal";break;
+						default: m_piCountry = "Unknown";break;
+					}
+					break;
+				case 0xa:
+					switch (ecc) {
+						case 0xe0: m_piCountry = "Austria";break;
+						case 0xe1: m_piCountry = "Gibralter";break;
+						case 0xe2: m_piCountry = "Iceland";break;
+						case 0xe3: m_piCountry = "Lebanon";break;
+						default: m_piCountry = "Unknown";break;
+					}
+					break;
+				case 0xb:
+					switch (ecc) {
+						case 0xe0: m_piCountry = "Hungary";break;
+						case 0xe1: m_piCountry = "Iraq";break;
+						case 0xe2: m_piCountry = "Monaco";break;
+						default: m_piCountry = "Unknown";break;
+					}
+					break;
+				case 0xc:
+					switch (ecc) {
+						case 0xe0: m_piCountry = "Malta";break;
+						case 0xe1: m_piCountry = "United Kingdom";break;
+						case 0xe2: m_piCountry = "Lithuania";break;
+						case 0xe3: m_piCountry = "Croatia";break;
+						default: m_piCountry = "Unknown";break;
+					}
+					break;
+				case 0xd:
+					switch (ecc) {
+						case 0xe0: m_piCountry = "Germany";break;
+						case 0xe1: m_piCountry = "Libya";break;
+						case 0xe2: m_piCountry = "Yugoslavia";break;
+						default: m_piCountry = "Unknown";break;
+					}
+					break;
+				case 0xe:
+					switch (ecc) {
+						case 0xe1: m_piCountry = "Romania";break;
+						case 0xe2: m_piCountry = "Spain";break;
+						case 0xe3: m_piCountry = "Sweden";break;
+						default: m_piCountry = "Unknown";break;
+					}
+					break;
+				case 0xf:
+					switch (ecc) {
+						case 0xe0: m_piCountry = "Egypt";break;
+						case 0xe1: m_piCountry = "France";break;
+						case 0xe2: m_piCountry = "Norway";break;
+						case 0xe3: m_piCountry = "Belarus";break;
+						case 0xe4: m_piCountry = "Bosnia Herzegovina";break;
+						default: m_piCountry = "Unknown";break;
+					}
+					break;
+				default: m_piCountry = "Unknown";break;
 
-			case 0x9: m_piCountry = "Albania/Denmark/Faroe/Latvia/Lichenstein/Slovenia"; break;
-			case 0x2: m_piCountry = "Algeria/Cyprus/Czech Republic/Estonia/Ireland"; break;
-			case 0x3: m_piCountry = "Andorra/Poland/San Marino/Turkey"; break;
-			case 0xa: m_piCountry = "Austria/Gilbralter/Iceland/Lebanon"; break;
-			case 0x8: m_piCountry = "Azores/Bulgaria/Madeira/Netherlands/Palestine/Portugal"; break;
-			case 0x6: m_piCountry = "Belgium/Finland/Syria/Ukraine"; break;
-			case 0xf: m_piCountry = "Belarus/Bosnia Herzegovina/Egypt/France/Norway"; break;
-			case 0xe: m_piCountry = "Canaries/Romania/Spain/Sweden"; break;
-			case 0xc: m_piCountry = "Croatia/Lithuania/Malta/United Kingdom"; break;
-			case 0xd: m_piCountry = "Germany/Libya/Yugoslavia"; break;
-			case 0x1: m_piCountry = "Germany/Greece/Moldova/Morocco"; break;
-			case 0xb: m_piCountry = "Hungary/Iraq/Monaco"; break;
-			case 0x4: m_piCountry = "Israel/Macedonia/Switzerland/Vatican"; break;
-			case 0x5: m_piCountry = "Italy/Jordan/Slovakia"; break;
-			case 0x7: m_piCountry = "Luxembourg/Russian Federation/Tunisia"; break;
-			default: m_piCountry = "Unknown";break;
+			}
+		} else {
+
+			switch (m_country) {
+
+				case 0x9: m_piCountry = "Albania/Denmark/Faroe/Latvia/Lichenstein/Slovenia"; break;
+				case 0x2: m_piCountry = "Algeria/Cyprus/Czech Republic/Estonia/Ireland"; break;
+				case 0x3: m_piCountry = "Andorra/Poland/San Marino/Turkey"; break;
+				case 0xa: m_piCountry = "Austria/Gilbralter/Iceland/Lebanon"; break;
+				case 0x8: m_piCountry = "Azores/Bulgaria/Madeira/Netherlands/Palestine/Portugal"; break;
+				case 0x6: m_piCountry = "Belgium/Finland/Syria/Ukraine"; break;
+				case 0xf: m_piCountry = "Belarus/Bosnia Herzegovina/Egypt/France/Norway"; break;
+				case 0xe: m_piCountry = "Canaries/Romania/Spain/Sweden"; break;
+				case 0xc: m_piCountry = "Croatia/Lithuania/Malta/United Kingdom"; break;
+				case 0xd: m_piCountry = "Germany/Libya/Yugoslavia"; break;
+				case 0x1: m_piCountry = "Germany/Greece/Moldova/Morocco"; break;
+				case 0xb: m_piCountry = "Hungary/Iraq/Monaco"; break;
+				case 0x4: m_piCountry = "Israel/Macedonia/Switzerland/Vatican"; break;
+				case 0x5: m_piCountry = "Italy/Jordan/Slovakia"; break;
+				case 0x7: m_piCountry = "Luxembourg/Russian Federation/Tunisia"; break;
+				default: m_piCountry = "Unknown";break;
+			}
 
 		}
 	}
