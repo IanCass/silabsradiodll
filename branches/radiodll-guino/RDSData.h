@@ -91,7 +91,6 @@ class CRDSData
 	rdsFifo_struct	m_RdsFifo[RDS_FIFO_SIZE];
 	int validation_limit;
 	int ta_validate_count;
-	//int lastPI;
 	
 	// RDS Radio Text
     BYTE m_rtDisplay[64];   // Displayed Radio Text

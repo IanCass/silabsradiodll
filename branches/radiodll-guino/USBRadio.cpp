@@ -460,3 +460,10 @@ USBRADIO_API bool __stdcall VB_GetRDSRegisters (char szRetBuf[256], short *iRetB
 	}
 
 }
+
+USBRADIO_API bool __stdcall SetExFlags(long Flags)
+{
+	// Set Ex Flags -- Some featueres may only have effect if called before HWInit
+	fmRadioDevice.ExFlags = Flags;
+	return true;
+}

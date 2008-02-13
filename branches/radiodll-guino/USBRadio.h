@@ -63,6 +63,6 @@ USBRADIO_API bool __stdcall     VB_GetRDSRegisters (char szRetBuf[256], short *i
 USBRADIO_API bool __stdcall RegisterTAStart (char windowName[256], short dwData, char lpData[256]);
 USBRADIO_API bool __stdcall RegisterTAStop (char windowName[256], short dwData, char lpData[256]);
 USBRADIO_API bool __stdcall RegisterRadioText (char windowName[256], short dwData, char lpData[256]);
-
+USBRADIO_API bool __stdcall SetExFlags(long Flags);
 
 

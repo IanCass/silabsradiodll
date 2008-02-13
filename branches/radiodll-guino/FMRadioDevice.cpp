@@ -45,8 +45,7 @@ DWORD WINAPI RDSThread( LPVOID lpParam )
 		EnterCriticalSection(&gRDSCriticalSection);
 		((CFMRadioDevice*)lpParam)->updateRDSData(&rdsTimerData);
 		LeaveCriticalSection(&gRDSCriticalSection);
-		// Wait next turn
-		//Sleep (RDS_TIMER_PERIOD);
+		Sleep(RDS_TIMER_PERIOD);
 	}
 
 	// Got here, then we've been requested to quit (Shouldquit=true)
@@ -131,6 +130,10 @@ CFMRadioDevice::CFMRadioDevice(bool GetRDSText)
 
 	m_OldRegister = 0;
 	m_RDSCleared = true;
+
+	//Advanced Options
+	ExFlags = FLAG_SLEEP;
+
 }
 
 CFMRadioDevice::~CFMRadioDevice()
@@ -282,7 +285,6 @@ bool CFMRadioDevice::updateRDSData(RDSData* rdsData)
 		//Call the update function and if it succeeds, fill the return structure with the current RDBS data
 		if (UpdateRDS())
 		{
-			
 			// Deduplicate
 			if(memcmp(&m_Register[STATUSRSSI], m_OldRDSRegister, sizeof(m_OldRDSRegister))==0)
 			{	//registers identicle
@@ -300,8 +302,7 @@ bool CFMRadioDevice::updateRDSData(RDSData* rdsData)
 					m_RDSCleared = false;
 				return(status);
 			}
-			
-										
+													
 			if ((m_Register[STATUSRSSI] & STATUSRSSI_RDSR))
 			{
 				sprintf(op, "\r\nRDS Status:%04X", (unsigned int)m_Register[STATUSRSSI]);
@@ -1127,7 +1128,7 @@ bool CFMRadioDevice::DoTune(double frequency)
 				GetSystemTime(&systemTime);
 				if ((systemTime.wSecond - startTime) > POLL_TIMEOUT_SECONDS)
 					error = true;
-				Sleep(3);
+				if(ExFlags & FLAG_SLEEP) Sleep(3);
 			}
 
 			//Once we are out of the polling loop, if there was no error and tune completed, clear 
@@ -1214,7 +1215,7 @@ bool CFMRadioDevice::Seek(bool seekUp)
 			GetSystemTime(&systemTime);
 			if ((systemTime.wSecond - startTime) > POLL_TIMEOUT_SECONDS)
 				error = true;
-			Sleep(3);
+			if (ExFlags & FLAG_SLEEP) Sleep(3);
 		}
 
 		//Once we are out of the polling loop, if there was no error and tune completed, clear 
@@ -1336,7 +1337,7 @@ bool CFMRadioDevice::GetRadioData(RadioData* radioData)
 			radioData->currentStation = 102.3;
 			radioData->seekThreshold = PREFERRED_SEEK_THRESHOLD;
 			radioData->band = DATA_BAND_875_108MHZ;
-			radioData->spacing = DATA_SPACING_100KHZ;
+			radioData->spacing = (ExFlags & FLAG_BAND)?DATA_SPACING_200KHZ:DATA_SPACING_100KHZ;
 			radioData->deemphasis = DATA_DEEMPHASIS_75;
 			radioData->monoStereo = DATA_MONOSTEREO_STEREO;
 			radioData->alwaysOnTop = false;
@@ -1385,7 +1386,7 @@ bool CFMRadioDevice::GetRadioData(RadioData* radioData)
 			radioData->preset[11] = CalculateStationFrequency((WORD)(((m_ScratchPage[16] & 0x03) << 8) | (m_ScratchPage[17] & 0xFF)));
 			radioData->currentStation = CalculateStationFrequency((WORD)(((m_ScratchPage[18] & 0xFF) << 2) | ((m_ScratchPage[19] & 0xC0) >> 6)));
 			radioData->band = m_ScratchPage[19] & DATA_BAND;
-			radioData->spacing = DATA_SPACING_100KHZ; // m_ScratchPage[19] & DATA_SPACING;
+			radioData->spacing = (ExFlags & FLAG_BAND)?DATA_SPACING_200KHZ:DATA_SPACING_100KHZ; // m_ScratchPage[19] & DATA_SPACING;
 			radioData->deemphasis = m_ScratchPage[19] & DATA_DEEMPHASIS;
 			radioData->monoStereo = DATA_MONOSTEREO_STEREO; // m_ScratchPage[19] & DATA_MONOSTEREO;
 			radioData->seekThreshold = PREFERRED_SEEK_THRESHOLD; // m_ScratchPage[20];
@@ -1415,7 +1416,7 @@ bool CFMRadioDevice::SetRadioData(RadioData* radioData)
 			m_ScratchPage[i] = 0xFF;
 
 		//Clear the scratch page of used data to 00s
-		for (int i = 0; i < SCRATCH_PAGE_USED_SIZE; i++)
+		for (i = 0; i < SCRATCH_PAGE_USED_SIZE; i++)
 			m_ScratchPage[i] = 0x00;
 
 		//See GetRadioData for the format of the scratch page
@@ -1597,47 +1598,24 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 				//Assign the first item in the array to the report number to read
 				m_pEndpoint1ReportBuffer[0] = RDS_REPORT;
 
-				//ReadFile(m_FMRadioDataHandle, m_pEndpoint1ReportBuffer, m_Endpoint1ReportBufferSize, &bytesRead, NULL);
-				//status = (bytesRead == m_Endpoint1ReportBufferSize);
-
-				//Sleep(30); // FUCKING Overlapped IO doesn't work which makes this necessary
-
 				//Call a read file on the data handle to read in from endpoint 1
 				if (!ReadFile(m_FMRadioDataHandle, m_pEndpoint1ReportBuffer, m_Endpoint1ReportBufferSize, &bytesRead, &o))
 				{
-#ifdef DOLOG
-	outfile << "Bytes NOT Read: " << bytesRead << " (of " << m_Endpoint1ReportBufferSize << ")\n";
-#endif
 					// If it didn't go through, then wait on the object to complete the read
 					DWORD error = GetLastError();
 					if (error == ERROR_IO_PENDING) 
 					{
-						//if (WaitForSingleObject(o.hEvent, 3000) == 0) {
-							if (GetOverlappedResult(m_FMRadioDataHandle, &o, &bytesRead, TRUE)) {
-								//sprintf(op, "Overlapped Result, len = %d %s\n", bytesRead, m_pEndpoint1ReportBuffer);
-								//OutputDebugString(op);
-								status = true;
-							}
-						//} else {
-						//	sprintf(op, "WaitForSingleObject failed");
-						//	OutputDebugString(op);
-						//}
+						if (GetOverlappedResult(m_FMRadioDataHandle, &o, &bytesRead, TRUE))
+							status = true;
 					}
 				}
 				else 
 				{
-					//char op[256];
-					//sprintf(op, "Non Overlapped Result, len = %d %s\n", bytesRead, m_pEndpoint1ReportBuffer);
-					//OutputDebugString(op);
 					status = true;
-#ifdef DOLOG
-	outfile << "Bytes Read: " << bytesRead << " (of " << m_Endpoint1ReportBufferSize << ")\n";
-#endif
 				}
 
 				//Close the object
 				CloseHandle(o.hEvent);
-// */
 
 				//If the read succeeded, assign returned data to the dataBuffer
 				if (status)
@@ -1800,7 +1778,7 @@ bool CFMRadioDevice::CreateRadioTimer()
 
 	// Create our Radio & RDS threads
 	h_radioTimer = CreateThread(NULL, 0, RadioThread, this, 0, &ThreadID); 
-	SetThreadPriority(h_radioTimer, THREAD_PRIORITY_HIGHEST);
+	SetThreadPriority(h_radioTimer, THREAD_PRIORITY_TIME_CRITICAL);
 	h_rdsTimer = CreateThread(NULL, 0, RDSThread, this, 0, &ThreadID); 
 	SetThreadPriority(h_rdsTimer, THREAD_PRIORITY_HIGHEST);
 

@@ -165,12 +165,6 @@ void CRDSData::UpdateRDSText(WORD* registers)
         update_pi(registers[RDSC]);
 	}
 
-	// Wait while PI code doesn't change to process other RDS info (Same PI normally means garbage from before tuning/seeking)
-   	//if ((lastPI != 0 && m_piDisplay == lastPI) || m_piDisplay == 0) {
-		//return;
-	//}
-	//lastPI = 0;
-
     // update pty code.  
     update_pty((registers[RDSB]>>5) & 0x1f); 
 
@@ -1150,6 +1144,5 @@ void CRDSData::update_rt(bool abFlag, BYTE count, BYTE addr, BYTE* byte, BYTE er
 void CRDSData::ResetRDSText()
 {
 	//Re-initialize the RDS
-	//lastPI = (lastPI==m_piDisplay)?-1:m_piDisplay;
 	InitRDS();
 }

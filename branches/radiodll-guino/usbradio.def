@@ -36,3 +36,4 @@ VB_GetRDSPICountry
 RegisterTAStart
 RegisterTAStop
 RegisterRadioText
+SetExFlags
