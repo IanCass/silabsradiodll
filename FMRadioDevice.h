@@ -317,6 +317,10 @@ typedef struct RDSData
 #define DATA_MUTEONSTARTUP		0x10
 #define DATA_SCANTIME			0x0F
 
+//Advanced Options
+#define FLAG_SLEEP	0x1
+#define FLAG_BAND	0x2
+
 class CFMRadioDevice  
 {
 public:
@@ -331,6 +335,7 @@ public:
 	DWORD   m_previous_process_priority;
 	bool    m_process_priority_set;
 	bool    m_GetRDSText;
+	long	ExFlags;
 
 	BYTE	OpenFMRadio(RadioData* radioData);
 	bool	CloseFMRadio();
