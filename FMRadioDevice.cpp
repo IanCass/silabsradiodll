@@ -46,7 +46,7 @@ DWORD WINAPI RDSThread( LPVOID lpParam )
 		((CFMRadioDevice*)lpParam)->updateRDSData(&rdsTimerData);
 		LeaveCriticalSection(&gRDSCriticalSection);
 		// Wait next turn
-		Sleep (RDS_TIMER_PERIOD);
+		//Sleep (RDS_TIMER_PERIOD);
 	}
 
 	// Got here, then we've been requested to quit (Shouldquit=true)
@@ -282,7 +282,7 @@ bool CFMRadioDevice::updateRDSData(RDSData* rdsData)
 		//Call the update function and if it succeeds, fill the return structure with the current RDBS data
 		if (UpdateRDS())
 		{
-			/*
+			
 			// Deduplicate
 			if(memcmp(&m_Register[STATUSRSSI], m_OldRDSRegister, sizeof(m_OldRDSRegister))==0)
 			{	//registers identicle
@@ -300,7 +300,7 @@ bool CFMRadioDevice::updateRDSData(RDSData* rdsData)
 					m_RDSCleared = false;
 				return(status);
 			}
-			*/
+			
 										
 			if ((m_Register[STATUSRSSI] & STATUSRSSI_RDSR))
 			{
@@ -1127,7 +1127,7 @@ bool CFMRadioDevice::DoTune(double frequency)
 				GetSystemTime(&systemTime);
 				if ((systemTime.wSecond - startTime) > POLL_TIMEOUT_SECONDS)
 					error = true;
-				//Sleep(3);
+				Sleep(3);
 			}
 
 			//Once we are out of the polling loop, if there was no error and tune completed, clear 
@@ -1214,7 +1214,7 @@ bool CFMRadioDevice::Seek(bool seekUp)
 			GetSystemTime(&systemTime);
 			if ((systemTime.wSecond - startTime) > POLL_TIMEOUT_SECONDS)
 				error = true;
-			//Sleep(3);
+			Sleep(3);
 		}
 
 		//Once we are out of the polling loop, if there was no error and tune completed, clear 
@@ -1415,7 +1415,7 @@ bool CFMRadioDevice::SetRadioData(RadioData* radioData)
 			m_ScratchPage[i] = 0xFF;
 
 		//Clear the scratch page of used data to 00s
-		for (i = 0; i < SCRATCH_PAGE_USED_SIZE; i++)
+		for (int i = 0; i < SCRATCH_PAGE_USED_SIZE; i++)
 			m_ScratchPage[i] = 0x00;
 
 		//See GetRadioData for the format of the scratch page
@@ -1800,9 +1800,9 @@ bool CFMRadioDevice::CreateRadioTimer()
 
 	// Create our Radio & RDS threads
 	h_radioTimer = CreateThread(NULL, 0, RadioThread, this, 0, &ThreadID); 
-	SetThreadPriority(h_radioTimer, THREAD_PRIORITY_TIME_CRITICAL);
+	SetThreadPriority(h_radioTimer, THREAD_PRIORITY_HIGHEST);
 	h_rdsTimer = CreateThread(NULL, 0, RDSThread, this, 0, &ThreadID); 
-	SetThreadPriority(h_rdsTimer, THREAD_PRIORITY_TIME_CRITICAL);
+	SetThreadPriority(h_rdsTimer, THREAD_PRIORITY_HIGHEST);
 
 	m_StreamingAllowed = true;
 
