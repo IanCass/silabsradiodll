@@ -16,7 +16,6 @@ static std::ofstream outfile;
 //////////////////////////////
 
 #define RADIO_TIMER_PERIOD 30	/* Call StreamAudio every RADIO_TIMER_PERIOD ms */
-#define RDS_TIMER_PERIOD   20	/* Call updateRDSData every RDS_TIMER_PERIOD ms */
 
 static RDSData rdsTimerData;	/* Variable Outside Class for Direct Thread access */
 static bool ShouldQuit;			/* Variable Outside Class for Direct Thread access */
@@ -45,7 +44,8 @@ DWORD WINAPI RDSThread( LPVOID lpParam )
 		EnterCriticalSection(&gRDSCriticalSection);
 		((CFMRadioDevice*)lpParam)->updateRDSData(&rdsTimerData);
 		LeaveCriticalSection(&gRDSCriticalSection);
-		Sleep(RDS_TIMER_PERIOD);
+		// Gives time so Caller app can grab the lock and read RDS whenever it wants
+		Sleep(1);
 	}
 
 	// Got here, then we've been requested to quit (Shouldquit=true)
