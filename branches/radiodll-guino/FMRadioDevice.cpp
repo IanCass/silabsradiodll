@@ -132,7 +132,7 @@ CFMRadioDevice::CFMRadioDevice(bool GetRDSText)
 	m_RDSCleared = true;
 
 	//Advanced Options
-	ExFlags = FLAG_SLEEP;
+	ExFlags = FLAG_SLEEP | FLAG_DEDUP;
 
 }
 
@@ -286,35 +286,37 @@ bool CFMRadioDevice::updateRDSData(RDSData* rdsData)
 		if (UpdateRDS())
 		{
 			// Deduplicate
-			if(memcmp(&m_Register[STATUSRSSI], m_OldRDSRegister, sizeof(m_OldRDSRegister))==0)
-			{	//registers identicle
-				if(m_RDSCleared)//first time we have seen this string
-				{//already seen ignore
+			if(ExFlags & FLAG_DEDUP) { 
+				if(memcmp(&m_Register[STATUSRSSI], m_OldRDSRegister, sizeof(m_OldRDSRegister))==0)
+				{	//registers identicle
+					if(m_RDSCleared)//first time we have seen this string
+					{//already seen ignore
+						return(status);
+					}
+				}
+				else
+				{
+					memcpy(m_OldRDSRegister, &m_Register[STATUSRSSI], sizeof(m_OldRDSRegister)); 
+					if((m_Register[STATUSRSSI] & STATUSRSSI_RDSR)==0)
+						m_RDSCleared = true;
+					else
+						m_RDSCleared = false;
 					return(status);
 				}
-			}
-			else
-			{
-				memcpy(m_OldRDSRegister, &m_Register[STATUSRSSI], sizeof(m_OldRDSRegister)); 
-				if((m_Register[STATUSRSSI] & STATUSRSSI_RDSR)==0)
-					m_RDSCleared = true;
-				else
-					m_RDSCleared = false;
-				return(status);
 			}
 													
 			if ((m_Register[STATUSRSSI] & STATUSRSSI_RDSR))
 			{
-				sprintf(op, "\r\nRDS Status:%04X", (unsigned int)m_Register[STATUSRSSI]);
-				OutputDebugString(op);
+				//sprintf(op, "\r\nRDS Status:%04X", (unsigned int)m_Register[STATUSRSSI]);
+				//OutputDebugString(op);
 				if (m_GetRDSText) 
 				{
 					m_RDS.UpdateRDSText(m_Register);
 					status = true;
 				}
 			}
-			else
-				OutputDebugString(".");
+			//else
+				//OutputDebugString(".");
 		}
 	}
 	return status;
@@ -554,8 +556,8 @@ void CFMRadioDevice::StreamAudio()
 	}
 
 	//If a tune isn't being performed, then stream in and out
-	if (!m_Tuning)
-	{
+	//if (!m_Tuning)
+	//{
 		//If we are not already streaming, initialize the stream
 		if (!m_Streaming)
 			InitializeStream();		
@@ -573,7 +575,7 @@ void CFMRadioDevice::StreamAudio()
 				StreamAudioOut();
 			}
 		}
-	}
+	//}
 }
 
 bool CFMRadioDevice::IsStreaming()
@@ -643,7 +645,7 @@ bool CFMRadioDevice::StreamAudioOut()
 		{
 			//waveOutProc callback function will get called, and free block counter gets incremented
 			if (!m_AudioAllowed)
-				if (gWaveFreeBlockCount == 0) waveOutProc(0, WOM_DONE, (DWORD)&gWaveFreeBlockCount, 0, 0);
+				if (gWaveFreeBlockCount < BLOCK_COUNT) waveOutProc(0, WOM_DONE, (DWORD)&gWaveFreeBlockCount, 0, 0);
 
 			//Increment the index of the current block to be played
 			m_CurrentBlock++;
@@ -1017,8 +1019,6 @@ bool CFMRadioDevice::Mute(bool mute)
 	else
 	{
 		m_AudioAllowed = true;
-		if (gWaveFreeBlockCount)
-			StreamAudioOut();
 	}
 
 	return true;
@@ -1337,7 +1337,7 @@ bool CFMRadioDevice::GetRadioData(RadioData* radioData)
 			radioData->currentStation = 102.3;
 			radioData->seekThreshold = PREFERRED_SEEK_THRESHOLD;
 			radioData->band = DATA_BAND_875_108MHZ;
-			radioData->spacing = (ExFlags & FLAG_BAND)?DATA_SPACING_200KHZ:DATA_SPACING_100KHZ;
+			radioData->spacing = (ExFlags & FLAG_200Khz)?DATA_SPACING_200KHZ:DATA_SPACING_100KHZ; // No Eprom set so default 100 or 200 (by flag)
 			radioData->deemphasis = DATA_DEEMPHASIS_75;
 			radioData->monoStereo = DATA_MONOSTEREO_STEREO;
 			radioData->alwaysOnTop = false;
@@ -1386,7 +1386,9 @@ bool CFMRadioDevice::GetRadioData(RadioData* radioData)
 			radioData->preset[11] = CalculateStationFrequency((WORD)(((m_ScratchPage[16] & 0x03) << 8) | (m_ScratchPage[17] & 0xFF)));
 			radioData->currentStation = CalculateStationFrequency((WORD)(((m_ScratchPage[18] & 0xFF) << 2) | ((m_ScratchPage[19] & 0xC0) >> 6)));
 			radioData->band = m_ScratchPage[19] & DATA_BAND;
-			radioData->spacing = (ExFlags & FLAG_BAND)?DATA_SPACING_200KHZ:DATA_SPACING_100KHZ; // m_ScratchPage[19] & DATA_SPACING;
+			radioData->spacing = m_ScratchPage[19] & DATA_SPACING;
+			if (ExFlags & FLAG_100Khz) radioData->spacing = DATA_SPACING_100KHZ; // If override to 100Khz
+			if (ExFlags & FLAG_200Khz) radioData->spacing = DATA_SPACING_200KHZ; // If override to 200Khz
 			radioData->deemphasis = m_ScratchPage[19] & DATA_DEEMPHASIS;
 			radioData->monoStereo = DATA_MONOSTEREO_STEREO; // m_ScratchPage[19] & DATA_MONOSTEREO;
 			radioData->seekThreshold = PREFERRED_SEEK_THRESHOLD; // m_ScratchPage[20];

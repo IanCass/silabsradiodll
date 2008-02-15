@@ -319,7 +319,9 @@ typedef struct RDSData
 
 //Advanced Options
 #define FLAG_SLEEP	0x1
-#define FLAG_BAND	0x2
+#define FLAG_100Khz	0x2
+#define FLAG_200Khz	0x4
+#define FLAG_DEDUP	0x8
 
 class CFMRadioDevice  
 {
