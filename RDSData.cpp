@@ -863,9 +863,10 @@ void CRDSData::update_pty(BYTE current_pty)
 
 void CRDSData::update_ps(BYTE addr, BYTE byte)
 {
-   BYTE i = 0;
+	   BYTE i = 0;
        BYTE textChange = 0; // indicates if the PS text is in transition
        BYTE psComplete = 1; // indicates that the PS text is ready to be displayed
+	   int validation_limit = 2; // Force Validation Limit = 2 inhere
 
        if(m_psTmp0[addr] == byte)
        {
