@@ -298,14 +298,14 @@ typedef struct RDSData
 #define DATA_BAND_875_108MHZ	0x00
 #define DATA_BAND_76_90MHZ		0x20
 
-#define DATA_SPACING		0x0C
-#define DATA_SPACING_200KHZ	0x00
-#define DATA_SPACING_100KHZ	0x04
-#define DATA_SPACING_50KHZ	0x08
+#define DATA_SPACING			0x0C
+#define DATA_SPACING_200KHZ		0x00
+#define DATA_SPACING_100KHZ		0x04
+#define DATA_SPACING_50KHZ		0x08
 
-#define DATA_DEEMPHASIS		0x02
-#define DATA_DEEMPHASIS_75	0x00
-#define DATA_DEEMPHASIS_50	0x02
+#define DATA_DEEMPHASIS			0x02
+#define DATA_DEEMPHASIS_75		0x00
+#define DATA_DEEMPHASIS_50		0x02
 
 #define DATA_MONOSTEREO			0x10
 #define DATA_MONOSTEREO_STEREO	0x01
@@ -318,10 +318,10 @@ typedef struct RDSData
 #define DATA_SCANTIME			0x0F
 
 //Advanced Options
-#define FLAG_SLEEP	0x1
-#define FLAG_100Khz	0x2
-#define FLAG_200Khz	0x4
-#define FLAG_DEDUP	0x8
+#define FLAG_DEDUP				0x01
+#define FLAG_100Khz				0x02
+#define FLAG_200Khz				0x04
+#define FLAG_MUTESTREAM			0x08
 
 class CFMRadioDevice  
 {
@@ -415,6 +415,7 @@ private:
 //USB Audio  Functionality
 
 public:
+	void	InitializeStream();
 	void	StreamAudio();
 	bool	IsStreaming();
 	bool	IsTuning();
@@ -430,7 +431,6 @@ public:
 private:
 	bool	OpenFMRadioAudio();
 	bool	OpenSoundCard();
-	void	InitializeStream();
 	bool	CloseFMRadioAudio();	
 	bool	CloseSoundCard();
 	
