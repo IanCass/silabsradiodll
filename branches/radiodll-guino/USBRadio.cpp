@@ -29,7 +29,7 @@ bool
 OpenFMRadio (CFMRadioDevice* fmDevice)
 {
 	if (fmDevice->OpenFMRadio(&radioData) == STATUS_OK ) {
-		fmDevice->StreamAudio();
+		fmDevice->InitializeStream();
 		fmDevice->CreateRadioTimer();
 		return (true);
 	}

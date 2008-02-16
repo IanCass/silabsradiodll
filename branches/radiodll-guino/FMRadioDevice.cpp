@@ -15,20 +15,48 @@ static std::ofstream outfile;
 #endif
 //////////////////////////////
 
-#define RADIO_TIMER_PERIOD 30	/* Call StreamAudio every RADIO_TIMER_PERIOD ms */
+#define RADIO_TIMER_PERIOD 20	/* Call StreamAudio every RADIO_TIMER_PERIOD ms */
 
 static RDSData rdsTimerData;	/* Variable Outside Class for Direct Thread access */
 static bool ShouldQuit;			/* Variable Outside Class for Direct Thread access */
 static int CurrFreq;			/* Variable Outside Class for Direct Thread access */
 static int QueFreq;				/* Variable Outside Class for Direct Thread access */
+static bool PopOut = false;	    /* Variable Outside Class for Direct Thread access */
 
 DWORD WINAPI RadioThread( LPVOID lpParam )
 {
+	int UnMuteCount = 0;
+	int OldVol = 0;
+
 	while(!ShouldQuit) {
 		//If new freq waiting to be tuned, do it
 		if (QueFreq != CurrFreq) ((CFMRadioDevice*)lpParam)->DoTune((double)QueFreq/10);
+
+		// Pop Removal
+		if(PopOut) {
+			if(!OldVol) {
+				OldVol = ((CFMRadioDevice*)lpParam)->GetWaveOutVolume();
+				if(((CFMRadioDevice*)lpParam)->ExFlags & FLAG_MUTESTREAM)
+					((CFMRadioDevice*)lpParam)->Mute(true);
+				else
+					((CFMRadioDevice*)lpParam)->SetWaveOutVolume(0);
+			}
+			UnMuteCount = 15;
+			PopOut = false;
+		}
+		if(OldVol) {
+			if(!UnMuteCount--) {
+				if(((CFMRadioDevice*)lpParam)->ExFlags & FLAG_MUTESTREAM)
+					((CFMRadioDevice*)lpParam)->Mute(false);
+				else
+					((CFMRadioDevice*)lpParam)->SetWaveOutVolume(OldVol);
+				OldVol = 0;
+			}
+		}
+
 		// Process Audio
 		((CFMRadioDevice*)lpParam)->StreamAudio();
+		
 		// Wait next turn
 		Sleep (RADIO_TIMER_PERIOD);
 	}
@@ -132,7 +160,7 @@ CFMRadioDevice::CFMRadioDevice(bool GetRDSText)
 	m_RDSCleared = true;
 
 	//Advanced Options
-	ExFlags = FLAG_SLEEP | FLAG_DEDUP;
+	ExFlags = FLAG_DEDUP;
 
 }
 
@@ -219,10 +247,8 @@ bool CFMRadioDevice::RRadioText (char windowName[256], short dwData, char lpData
 	return true;
 }
 
-
-bool CFMRadioDevice::GetRDSData(RDSData* rdsData) {
-
-	
+bool CFMRadioDevice::GetRDSData(RDSData* rdsData) 
+{
 	if (&rdsTimerData) {
 		EnterCriticalSection(&gRDSCriticalSection);
 
@@ -307,16 +333,12 @@ bool CFMRadioDevice::updateRDSData(RDSData* rdsData)
 													
 			if ((m_Register[STATUSRSSI] & STATUSRSSI_RDSR))
 			{
-				//sprintf(op, "\r\nRDS Status:%04X", (unsigned int)m_Register[STATUSRSSI]);
-				//OutputDebugString(op);
 				if (m_GetRDSText) 
 				{
 					m_RDS.UpdateRDSText(m_Register);
 					status = true;
 				}
 			}
-			//else
-				//OutputDebugString(".");
 		}
 	}
 	return status;
@@ -331,7 +353,6 @@ void CFMRadioDevice::ResetRDSText()
 bool CFMRadioDevice::SaveRadioSettings(RadioData* radioData)
 {
 	bool status = false;
-
 	//Check that radio data is not NULL
 	if (radioData)
 	{
@@ -343,7 +364,6 @@ bool CFMRadioDevice::SaveRadioSettings(RadioData* radioData)
 				status = true;
 		}
 	}
-
 	return status;
 }
 
@@ -534,7 +554,8 @@ void CFMRadioDevice::InitializeStream()
 	while (gWaveFreeBlockCount > (BLOCK_COUNT - BUFFER_PADDING))
 	{
 		StreamAudioIn();
-		Sleep(50);
+		StreamAudio();
+		Sleep(20);
 	}
 
 	//Skip the first chunk (at least half) of the padded buffer to eliminate any audio glitches
@@ -555,27 +576,19 @@ void CFMRadioDevice::StreamAudio()
 		return;
 	}
 
-	//If a tune isn't being performed, then stream in and out
-	//if (!m_Tuning)
-	//{
-		//If we are not already streaming, initialize the stream
-		if (!m_Streaming)
-			InitializeStream();		
-
-		//Check that the handles arent NULL
-		if ((m_FMRadioAudioHandle) && (m_SoundCardHandle))
-		{
-			//If there are any free blocks, then stream audio in.
-			if (gWaveFreeBlockCount) {
-				StreamAudioIn();
-			}
-
-			//If there are any blocks ready for output, then stream audio out
-			if (gWaveFreeBlockCount < BLOCK_COUNT) {
-				StreamAudioOut();
-			}
+	//Check that the handles arent NULL
+	if ((m_FMRadioAudioHandle) && (m_SoundCardHandle))
+	{
+		//If there are any free blocks, then stream audio in.
+		if (gWaveFreeBlockCount) {
+			StreamAudioIn();
 		}
-	//}
+
+		//If there are any blocks ready for output, then stream audio out
+		if (gWaveFreeBlockCount < BLOCK_COUNT) {
+			StreamAudioOut();
+		}
+	}
 }
 
 bool CFMRadioDevice::IsStreaming()
@@ -818,8 +831,6 @@ bool CFMRadioDevice::OpenFMRadioData()
 				{
 					//Open the device				
 					hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
-					//hHidDeviceHandle = CreateFile(hidDeviceInterfaceDetailData->DevicePath, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, NULL, NULL);
-
 					if (hHidDeviceHandle != INVALID_HANDLE_VALUE)
 					{
 						HIDD_ATTRIBUTES	hidDeviceAttributes;
@@ -1128,7 +1139,7 @@ bool CFMRadioDevice::DoTune(double frequency)
 				GetSystemTime(&systemTime);
 				if ((systemTime.wSecond - startTime) > POLL_TIMEOUT_SECONDS)
 					error = true;
-				if(ExFlags & FLAG_SLEEP) Sleep(3);
+				//if(ExFlags & FLAG_SLEEP) Sleep(3);
 			}
 
 			//Once we are out of the polling loop, if there was no error and tune completed, clear 
@@ -1151,6 +1162,7 @@ bool CFMRadioDevice::DoTune(double frequency)
 		}
 
 		CurrFreq = (int)((frequency+0.001)*10);
+		PopOut = true;
 
 		//Set tuning back to false
 		m_Tuning = false;
@@ -1215,7 +1227,7 @@ bool CFMRadioDevice::Seek(bool seekUp)
 			GetSystemTime(&systemTime);
 			if ((systemTime.wSecond - startTime) > POLL_TIMEOUT_SECONDS)
 				error = true;
-			if (ExFlags & FLAG_SLEEP) Sleep(3);
+			//if (ExFlags & FLAG_SLEEP) Sleep(3);
 		}
 
 		//Once we are out of the polling loop, if there was no error and tune completed, clear 
@@ -1247,6 +1259,7 @@ bool CFMRadioDevice::Seek(bool seekUp)
 	// Save new Freq
 	CurrFreq = (int)(CalculateStationFrequency(m_Register[READCHAN] & READCHAN_READCHAN)*10);
 	QueFreq = CurrFreq;
+	PopOut = true;
 
 	RDSData rds_data;
 	if (GetRDSData(&rds_data)) {
