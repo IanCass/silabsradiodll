@@ -4,12 +4,78 @@
 #include "stdafx.h"
 #include "USBRadio.h"
 #include "FMRadioDevice.h"
-#include "WTypes.h"
+#include <time.h>
 
-#include <fstream>
 
 static CFMRadioDevice fmRadioDevice(true);
+static CFMRadioDevice fmRadioDevice2(false);
 static RadioData radioData;
+bool shouldQuit = false;
+
+HANDLE h_afTimer;
+
+/**
+* Thread to Poll the primary radio device & see if it
+* needs switching frequency
+*/
+DWORD WINAPI AFThread( LPVOID lpParam )
+{
+	RDSData afData;
+	RDSData afData2;
+	char c[265];
+	int loopTime = 10000;
+
+	while(!shouldQuit) {
+		int seconds = time(NULL);
+		OutputDebugString("Start AF Sweep...\n");
+		fmRadioDevice.GetRDSData(&afData);
+
+		OutputDebugString("Got RDS Data\n");
+		int cf = fmRadioDevice.CurrFreq;
+
+		// tune each AF station to check if the signal is
+		// better than current
+		if (afData.AFMap.size() > 0) {
+	
+			std::map<float, float>::iterator iter; // our i for looping
+			for(iter = afData.AFMap.begin(); iter != afData.AFMap.end(); iter++) {
+				double freq = iter->first;
+
+				// tune to our candidate freq
+				fmRadioDevice2.DoTune(freq);
+
+				// Let the station settle
+				//Sleep(1000);
+
+				// Update teh stats
+				// repeat lots of times in case we have crud
+				for (int i = 0; i < 50; i++) {
+					fmRadioDevice2.updateRDSData();
+				}
+
+				// get signal strength
+				fmRadioDevice2.GetRDSData(&afData2);
+
+				sprintf(c, "AF Freq = %.2f, signal strength = %d, stereo = %d\n", freq, afData2.recievedSignalStrength, afData2.isStereo);
+				OutputDebugString(c);
+				
+				if (shouldQuit) break;
+				if (cf != fmRadioDevice.CurrFreq) {
+					OutputDebugString("Aborting AF Sweep = channel changed...\n");
+					break;
+				}
+			}
+		}
+		OutputDebugString("End AF Sweep...\n");
+
+
+		Sleep(loopTime - (time(NULL) - seconds));
+	}
+
+	// Got here, then we've been requested to quit (Shouldquit=true)
+	return 0;
+}
+
 
 BOOL APIENTRY DllMain( HANDLE hModule, 
                        DWORD  ul_reason_for_call, 
@@ -32,19 +98,18 @@ bool
 OpenFMRadio (CFMRadioDevice* fmDevice)
 {
 	if (fmDevice->OpenFMRadio(&radioData) == STATUS_OK ) {
-		fmDevice->StreamAudio();
-		fmDevice->CreateRadioTimer();
-		fmDevice->CreateRDSTimer();
-		return (true);
+			fmDevice->InitializeStream();
+			fmDevice->CreateRadioTimer();
 	}
 
-	return (false);
+	return (true);
 }
 
 bool
 CloseFMRadio (CFMRadioDevice* fmDevice)
 {
-	if (fmDevice->DestroyRadioTimer() && fmDevice->DestroyRDSTimer()) {
+	if (fmDevice->DestroyRadioTimer())
+	{
 		fmDevice->CloseFMRadio();
 		return (true);
 	}
@@ -84,14 +149,13 @@ FMTune (long frequency)
 	return (fmRadioDevice.Tune((double)frequency/1000));
 }
 
-
 //
 // Radiator Interface support
 //
 USBRADIO_API char* __stdcall
 GetModuleName ()
 {
-	return ("Silicon Labs USB FM Radio Reference Design (Appy v0.1)");
+	return ("SiLabs USB FM Radio (http://silabsradiodll.googlecode.com)");
 }
 
 USBRADIO_API unsigned long __stdcall
@@ -104,11 +168,10 @@ USBRADIO_API bool __stdcall
 HWInit ()
 {
 	bool ret = OpenFMRadio(&fmRadioDevice);
-	
-	if (ret) {
-		fmRadioDevice.Mute(FALSE);
-		TuneFreq(87000);
-	}
+	//ret = OpenFMRadio(&fmRadioDevice2);
+
+	//h_afTimer = CreateThread(NULL, 0, AFThread, NULL, 0, NULL); 
+	//SetThreadPriority(h_afTimer, THREAD_PRIORITY_LOWEST);
 
 	return (ret);
 }
@@ -116,22 +179,23 @@ HWInit ()
 USBRADIO_API bool __stdcall
 HWDeInit ()
 {
-	return (CloseFMRadio(&fmRadioDevice));
+	CloseFMRadio(&fmRadioDevice);
+	CloseFMRadio(&fmRadioDevice2);
+
+	// Quit Threads
+	shouldQuit = true;
+	Sleep (200);
+
+	// Set they've been terminated
+	h_afTimer = NULL;
+
+	return true;
+
 }
 
 USBRADIO_API void __stdcall
 TuneFreq (long frequency)
 {
-	//std::ofstream outfile;
-	//char output [100];
-
-//	outfile.open(, std::ios::out, std::filebuf::open);
-	//outfile.open("c:\\log.txt", std::ofstream::app);
-
-	//sprintf(output, "TuneFreq: %d\n", frequency);
-
-	//outfile << output;
-
 	fmRadioDevice.Tune((double)frequency/1000);
 }
 
@@ -232,7 +296,6 @@ FMTuneDown ()
 	return (fmRadioDevice.Tune(false));
 }
 
-
 USBRADIO_API bool __stdcall VB_GetModuleName (char szReturnModuleName[256], short *iSize)
 {
 
@@ -240,6 +303,11 @@ USBRADIO_API bool __stdcall VB_GetModuleName (char szReturnModuleName[256], shor
 	strncpy(szReturnModuleName, "Silicon Labs USB FM Radio Reference Design (Appy v0.1)", *iSize);
 
 	return true;
+}
+
+USBRADIO_API bool __stdcall VB_GetRDS (char szRetRDS[256], short *iRetSize)
+{
+	return VB_GetRDSText(szRetRDS, iRetSize);
 }
 
 USBRADIO_API bool __stdcall VB_GetRDSText (char szRetRDS[256], short *iRetSize)
@@ -280,11 +348,35 @@ USBRADIO_API bool __stdcall VB_GetRDSPS (char szRetRDS[8], short *iRetSize)
 	}
 }
 
-USBRADIO_API bool __stdcall VB_GetRDSPI (int *rdsPI)
+USBRADIO_API bool __stdcall VB_GetRDSPIRegion (char szRetRDS[256], short *iRetSize)
 {
 	RDSData rds_data;
 
+	if (fmRadioDevice.GetRDSData(&rds_data)) {
+		*iRetSize=strlen(rds_data.rdsPIRegion.c_str());
+		strncpy(szRetRDS, rds_data.rdsPIRegion.c_str(), *iRetSize);
+		return true;
+	} else {
+		return false;
+	}
+}
 
+USBRADIO_API bool __stdcall VB_GetRDSPICountry (char szRetRDS[256], short *iRetSize)
+{
+	RDSData rds_data;
+
+	if (fmRadioDevice.GetRDSData(&rds_data)) {
+		*iRetSize=strlen(rds_data.rdsPICountry.c_str());
+		strncpy(szRetRDS, rds_data.rdsPICountry.c_str(), *iRetSize);
+		return true;
+	} else {
+		return false;
+	}
+}
+
+USBRADIO_API bool __stdcall VB_GetRDSPI (int *rdsPI)
+{
+	RDSData rds_data;
 
 	if (fmRadioDevice.GetRDSData(&rds_data)) {
 		*rdsPI = rds_data.rdsPI;
@@ -343,7 +435,6 @@ USBRADIO_API bool __stdcall VB_GetRDSTP (bool *res)
 	}
 }
 
-
 USBRADIO_API bool __stdcall VB_GetRDSTA (bool *res)
 {
 	RDSData rds_data;
@@ -356,6 +447,32 @@ USBRADIO_API bool __stdcall VB_GetRDSTA (bool *res)
 	}
 }
 
+USBRADIO_API bool __stdcall VB_GetAFList (float* ary, int* arysize) {
+
+	RDSData rds_data;
+
+	if (*arysize < 1) return false;
+
+	if (fmRadioDevice.GetRDSData(&rds_data)) {
+
+		if (rds_data.AFMap.size() > 0) {
+	
+			std::map<float, float>::iterator iter; // our i for looping
+			int cnt = 0;
+			for(iter = rds_data.AFMap.begin(); iter != rds_data.AFMap.end(); iter++) {
+				ary[cnt] = iter->first;
+				cnt++;
+				if (cnt > *arysize - 1) break;
+			}
+			*arysize = rds_data.AFMap.size();
+			return true;
+		} else {
+			return false;
+		}
+	} else {
+		return false;
+	}
+}
 
 USBRADIO_API bool __stdcall VB_GetRadioRegisters (char szRetBuf[256], short *iRetBufSize)
 {
@@ -388,6 +505,21 @@ USBRADIO_API bool __stdcall VB_GetRadioRegisters (char szRetBuf[256], short *iRe
 
 }
 
+USBRADIO_API bool __stdcall RegisterTAStart (char windowName[256], short dwData, char lpData[256])
+{
+	return fmRadioDevice.RTAStart(windowName, dwData, lpData);
+}
+
+USBRADIO_API bool __stdcall RegisterTAStop (char windowName[256], short dwData, char lpData[256])
+{
+	return fmRadioDevice.RTAStop(windowName, dwData, lpData);
+}
+
+USBRADIO_API bool __stdcall RegisterRadioText (char windowName[256], short dwData, char lpData[256])
+{
+	return fmRadioDevice.RRadioText(windowName, dwData, lpData);
+}
+
 USBRADIO_API bool __stdcall VB_GetRDSRegisters (char szRetBuf[256], short *iRetBufSize)
 {
 	FMRADIO_REGISTER	allRegisters[FMRADIO_REGISTER_NUM];
@@ -410,4 +542,11 @@ USBRADIO_API bool __stdcall VB_GetRDSRegisters (char szRetBuf[256], short *iRetB
 		return false;
 	}
 
+}
+
+USBRADIO_API bool __stdcall SetExFlags(long Flags)
+{
+	// Set Ex Flags -- Some featueres may only have effect if called before HWInit
+	fmRadioDevice.ExFlags = Flags;
+	return true;
 }
