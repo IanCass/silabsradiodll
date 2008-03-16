@@ -116,6 +116,10 @@ class CRDSData
 	WORD m_RdsBlocksValid;		// Number of valid blocks received
 	WORD m_RdsBlocksTotal;		// Total number of blocks expected
 
+	BYTE ecc;
+	BYTE v_ecc;
+	int c_ecc;
+
 
 
 	// Debug information storing number of each kind of group received
@@ -131,7 +135,6 @@ class CRDSData
 	void display_rt();
 	void LogRDSDataStream(WORD* registers);
 	float ConvertAFFrequency(BYTE freq);
-
 
 public:
 	CRDSData();

@@ -23,6 +23,7 @@
 			UseOfMFC="0"
 			ATLMinimizesCRunTimeLibraryUsage="false"
 			CharacterSet="2"
+			WholeProgramOptimization="1"
 			>
 			<Tool
 				Name="VCPreBuildEventTool"
@@ -51,9 +52,10 @@
 				InlineFunctionExpansion="1"
 				EnableIntrinsicFunctions="true"
 				FavorSizeOrSpeed="1"
+				WholeProgramOptimization="true"
 				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;USBRADIO_EXPORTS"
 				StringPooling="true"
-				RuntimeLibrary="0"
+				RuntimeLibrary="2"
 				EnableFunctionLevelLinking="true"
 				UsePrecompiledHeader="2"
 				PrecompiledHeaderThrough="stdafx.h"
@@ -83,6 +85,7 @@
 				SuppressStartupBanner="true"
 				ModuleDefinitionFile=".\usbradio.def"
 				ProgramDatabaseFile=".\Release/USBRadio.pdb"
+				LinkTimeCodeGeneration="1"
 				RandomizedBaseAddress="1"
 				DataExecutionPrevention="0"
 				ImportLibrary=".\Release/USBRadio.lib"
@@ -242,10 +245,13 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
+				EnableIntrinsicFunctions="true"
+				FavorSizeOrSpeed="1"
 				PreprocessorDefinitions="WIN32;_DEBUG;_WINDOWS;_USRDLL;USBRADIO_EXPORTS"
 				MinimalRebuild="true"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="1"
+				EnableEnhancedInstructionSet="2"
 				UsePrecompiledHeader="2"
 				PrecompiledHeaderThrough="stdafx.h"
 				PrecompiledHeaderFile=".\Debug/USBRadio.pch"
@@ -430,6 +436,18 @@
 			</File>
 			<File
 				RelativePath="usbradio.def"
+				>
+			</File>
+			<File
+				RelativePath=".\XYCriticalSection.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\XYCriticalSection.h"
+				>
+			</File>
+			<File
+				RelativePath=".\XYLock.h"
 				>
 			</File>
 		</Filter>

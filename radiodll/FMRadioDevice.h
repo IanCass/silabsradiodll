@@ -7,12 +7,13 @@
 
 #if _MSC_VER > 1000
 #pragma once
-#endif // _MSC_VER > 1000
+#endif
 
 #define _WIN32_WINNT 0x0500
 
-#include <windows.h>
+typedef GUID *LPGUID;
 
+#include <windows.h>
 
 //ULONG/DWORD pointer types defined for DDK if not already
 #ifndef ULONG_PTR
@@ -33,14 +34,12 @@
 #pragma comment (lib, "kernel32.lib")
 #endif
 
-#include "/winddk/3790.1830/inc/wxp/initguid.h"
-
 #define MAX_LOADSTRING 256
 
 extern "C" {
-#include "/winddk/3790.1830/inc/wxp/hidsdi.h"
+#include "hidsdi.h"
 }
-#include "/winddk/3790.1830/inc/wxp/setupapi.h"
+#include "setupapi.h"
 
 #include <dbt.h>
 
@@ -48,6 +47,7 @@ extern "C" {
 #include "mmsystem.h"
 
 #include "RDSData.h"
+#include "XYCriticalSection.h"
 
 //Max number of USB Devices allowed
 #define MAX_USB_DEVICES	64
@@ -228,7 +228,7 @@ typedef BYTE	SCRATCH_PAGE[SCRATCH_PAGE_SIZE];
 
 //Seek Threshold Definitions
 #define MAX_SEEK_THRESHOLD			63
-#define PREFERRED_SEEK_THRESHOLD	31
+#define PREFERRED_SEEK_THRESHOLD	25
 
 //Number of presets definition
 #define PRESET_NUM	12
@@ -298,14 +298,14 @@ typedef struct RDSData
 #define DATA_BAND_875_108MHZ	0x00
 #define DATA_BAND_76_90MHZ		0x20
 
-#define DATA_SPACING		0x0C
-#define DATA_SPACING_200KHZ	0x00
-#define DATA_SPACING_100KHZ	0x04
-#define DATA_SPACING_50KHZ	0x08
+#define DATA_SPACING			0x0C
+#define DATA_SPACING_200KHZ		0x00
+#define DATA_SPACING_100KHZ		0x04
+#define DATA_SPACING_50KHZ		0x08
 
-#define DATA_DEEMPHASIS		0x02
-#define DATA_DEEMPHASIS_75	0x00
-#define DATA_DEEMPHASIS_50	0x02
+#define DATA_DEEMPHASIS			0x02
+#define DATA_DEEMPHASIS_75		0x00
+#define DATA_DEEMPHASIS_50		0x02
 
 #define DATA_MONOSTEREO			0x10
 #define DATA_MONOSTEREO_STEREO	0x01
@@ -317,10 +317,16 @@ typedef struct RDSData
 #define DATA_MUTEONSTARTUP		0x10
 #define DATA_SCANTIME			0x0F
 
+//Advanced Options
+#define FLAG_DEDUP				0x01
+#define FLAG_100Khz				0x02
+#define FLAG_200Khz				0x04
+#define FLAG_MUTESTREAM			0x08
+
 class CFMRadioDevice  
 {
 public:
-	CFMRadioDevice(bool GetRDSText = false);
+	CFMRadioDevice(bool primary);
 	virtual ~CFMRadioDevice();
 
 //////////////////////
@@ -330,7 +336,7 @@ public:
 	bool    change_process_priority;
 	DWORD   m_previous_process_priority;
 	bool    m_process_priority_set;
-	bool    m_GetRDSText;
+	long	ExFlags;
 
 	BYTE	OpenFMRadio(RadioData* radioData);
 	bool	CloseFMRadio();
@@ -348,13 +354,15 @@ public:
 	bool	Mute(bool mute);
 	bool	Tune(bool tuneUp);
 	bool	Tune(double frequency);
+	bool	DoTune(double frequency);
 	bool	Seek(bool seekUp);
 	bool	GetRDSData(RDSData* radioData);
 	bool	RTAStart (char windowName[256], short dwData, char lpData[256]);
 	bool	RTAStop (char windowName[256], short dwData, char lpData[256]);
 	bool	RRadioText (char windowName[256], short dwData, char lpData[256]);
 
-	bool	updateRDSData(RDSData* radioData);
+	//bool	updateRDSData(RDSData* radioData);
+	void	updateRDSData();
 	void	ResetRDSText();
 	bool	SaveRadioSettings(RadioData* radioData);	
 	bool	WriteRegister(BYTE report, FMRADIO_REGISTER registers);
@@ -363,6 +371,8 @@ public:
 
 	bool	SetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer, DWORD dataBufferSize);
 	bool	GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer, DWORD dataBufferSize);
+	
+
 
 private:
 	bool	OpenFMRadioData();
@@ -371,6 +381,10 @@ private:
 	bool	SetRadioData(RadioData* radioData);
 	bool	InitializeRadioData(RadioData* radioData);
 	bool	CloseFMRadioData();
+	RDSData lrdsData;
+
+	XYCriticalSection gRDSCriticalSection;
+	HANDLE gRDSMutex;
 
 	HANDLE	m_FMRadioDataHandle;
 	HANDLE	m_FMRadioRDSHandle;
@@ -389,8 +403,9 @@ private:
 
 	CRDSData	m_RDS;
 	WORD		m_OldRegister;
-	WORD		m_OldRDSRegister[RDS_REGISTER_NUM];
+	WORD		m_OldRDSRegister[4];
 	bool		m_RDSCleared;
+	bool		primaryRadio;
 	
 	double	CalculateStationFrequency(FMRADIO_REGISTER hexChannel);
 	WORD	CalculateStationFrequencyBits(double frequency);
@@ -407,6 +422,7 @@ private:
 //USB Audio  Functionality
 
 public:
+	void	InitializeStream();
 	void	StreamAudio();
 	bool	IsStreaming();
 	bool	IsTuning();
@@ -418,24 +434,20 @@ public:
 
 	bool CreateRadioTimer();
     bool DestroyRadioTimer();
-	bool SuspendRDSTimer();
-	bool ResumeRDSTimer();
 
-	bool CreateRDSTimer();
-    bool DestroyRDSTimer();
-	bool        m_StreamingAllowed;
-
-	bool	CloseFMRadioAudio();	
+private:
 	bool	OpenFMRadioAudio();
 	bool	OpenSoundCard();
+	bool	CloseFMRadioAudio();	
 	bool	CloseSoundCard();
 	
+
+public:	
+	int CurrFreq;	
+	int QueFreq;
+	bool PopOut;
+
 private:
-
-
-	void	InitializeStream();
-
-
 
 	HWAVEIN		m_FMRadioAudioHandle;
 	HWAVEOUT	m_SoundCardHandle;
@@ -447,8 +459,10 @@ private:
 	WAVEHDR		m_InputHeader;
 	WAVEHDR*	m_OutputHeader;
 	char*		m_WaveformBuffer;
+		
 
-
+	bool		m_StreamingAllowed;
+	bool		m_AudioAllowed;
 	bool		m_Streaming;
 	bool		m_Tuning;
 	int			m_CurrentBlock;

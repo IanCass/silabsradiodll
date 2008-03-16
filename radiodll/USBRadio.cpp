@@ -4,12 +4,13 @@
 #include "stdafx.h"
 #include "USBRadio.h"
 #include "FMRadioDevice.h"
-#include "WTypes.h"
+#include <time.h>
 
-#include <fstream>
 
 static CFMRadioDevice fmRadioDevice(true);
+
 static RadioData radioData;
+
 
 BOOL APIENTRY DllMain( HANDLE hModule, 
                        DWORD  ul_reason_for_call, 
@@ -32,25 +33,24 @@ bool
 OpenFMRadio (CFMRadioDevice* fmDevice)
 {
 	if (fmDevice->OpenFMRadio(&radioData) == STATUS_OK ) {
-		fmDevice->StreamAudio();
-		fmDevice->CreateRadioTimer();
-		fmDevice->CreateRDSTimer();
-		return (true);
+			fmDevice->InitializeStream();
+			fmDevice->CreateRadioTimer();
 	}
 
-	return (false);
+	return (true);
 }
 
 bool
 CloseFMRadio (CFMRadioDevice* fmDevice)
 {
-	fmDevice->DestroyRadioTimer();
-	fmDevice->DestroyRDSTimer();
-	fmDevice->CloseFMRadio();
-	return (true);
+	if (fmDevice->DestroyRadioTimer())
+	{
+		fmDevice->CloseFMRadio();
+		return (true);
+	}
+
+	return (false);
 }
-
-
 
 bool
 GetRDSInfo (CFMRadioDevice* fmDevice, RDSData* rdsData)
@@ -84,14 +84,13 @@ FMTune (long frequency)
 	return (fmRadioDevice.Tune((double)frequency/1000));
 }
 
-
 //
 // Radiator Interface support
 //
 USBRADIO_API char* __stdcall
 GetModuleName ()
 {
-	return ("Silicon Labs USB FM Radio Reference Design");
+	return ("SiLabs USB FM Radio (http://silabsradiodll.googlecode.com)");
 }
 
 USBRADIO_API unsigned long __stdcall
@@ -104,50 +103,28 @@ USBRADIO_API bool __stdcall
 HWInit ()
 {
 	bool ret = OpenFMRadio(&fmRadioDevice);
-	
-	if (ret) {
-		fmRadioDevice.Mute(FALSE);
-		TuneFreq(87000);
-	}
-
 	return (ret);
 }
 
 USBRADIO_API bool __stdcall
 HWDeInit ()
 {
-	return (CloseFMRadio(&fmRadioDevice));
+	CloseFMRadio(&fmRadioDevice);
+
+	return true;
+
 }
 
 USBRADIO_API void __stdcall
 TuneFreq (long frequency)
 {
-	//std::ofstream outfile;
-	//char output [100];
-
-//	outfile.open(, std::ios::out, std::filebuf::open);
-	//outfile.open("c:\\log.txt", std::ofstream::app);
-
-	//sprintf(output, "TuneFreq: %d\n", frequency);
-
-	//outfile << output;
-
 	fmRadioDevice.Tune((double)frequency/1000);
 }
 
 USBRADIO_API void __stdcall
 SetMute (bool mute)
 {
-	//fmRadioDevice.Mute(mute);
-	if (mute) {
-		fmRadioDevice.DestroyRadioTimer();
-		fmRadioDevice.CloseFMRadioAudio();
-		fmRadioDevice.CloseSoundCard();
-	} else {
-		fmRadioDevice.OpenFMRadioAudio();
-		fmRadioDevice.OpenSoundCard();
-		fmRadioDevice.CreateRadioTimer();
-	}
+	fmRadioDevice.Mute(mute);
 }
 
 USBRADIO_API long __stdcall
@@ -241,12 +218,11 @@ FMTuneDown ()
 	return (fmRadioDevice.Tune(false));
 }
 
-
 USBRADIO_API bool __stdcall VB_GetModuleName (char szReturnModuleName[256], short *iSize)
 {
 
 	*iSize=strlen("Silicon Labs USB FM Radio Reference Design (Appy v0.1)");
-	strncpy(szReturnModuleName, "Silicon Labs USB FM Radio Reference Design", *iSize);
+	strncpy(szReturnModuleName, "Silicon Labs USB FM Radio Reference Design (Appy v0.1)", *iSize);
 
 	return true;
 }
@@ -324,8 +300,6 @@ USBRADIO_API bool __stdcall VB_GetRDSPI (int *rdsPI)
 {
 	RDSData rds_data;
 
-
-
 	if (fmRadioDevice.GetRDSData(&rds_data)) {
 		*rdsPI = rds_data.rdsPI;
 		return true;
@@ -383,7 +357,6 @@ USBRADIO_API bool __stdcall VB_GetRDSTP (bool *res)
 	}
 }
 
-
 USBRADIO_API bool __stdcall VB_GetRDSTA (bool *res)
 {
 	RDSData rds_data;
@@ -422,7 +395,6 @@ USBRADIO_API bool __stdcall VB_GetAFList (float* ary, int* arysize) {
 		return false;
 	}
 }
-
 
 USBRADIO_API bool __stdcall VB_GetRadioRegisters (char szRetBuf[256], short *iRetBufSize)
 {
@@ -492,4 +464,11 @@ USBRADIO_API bool __stdcall VB_GetRDSRegisters (char szRetBuf[256], short *iRetB
 		return false;
 	}
 
+}
+
+USBRADIO_API bool __stdcall SetExFlags(long Flags)
+{
+	// Set Ex Flags -- Some featueres may only have effect if called before HWInit
+	fmRadioDevice.ExFlags = Flags;
+	return true;
 }
