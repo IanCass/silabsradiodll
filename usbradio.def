@@ -19,6 +19,7 @@ FMTuneUp
 FMTuneDown
 GetRDS
 VB_GetModuleName
+VB_GetRDS
 VB_GetRDSText
 VB_GetRDSPS
 VB_GetRDSPI
@@ -32,3 +33,7 @@ VB_GetRDSRegisters
 VB_GetAFList
 VB_GetRDSPIRegion
 VB_GetRDSPICountry
+RegisterTAStart
+RegisterTAStop
+RegisterRadioText
+SetExFlags

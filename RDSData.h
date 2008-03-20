@@ -78,6 +78,7 @@ typedef std::map<float, float> tAFMap;
 #define RDS_PI_VALIDATE_LIMIT  4
 #define RDS_PTY_VALIDATE_LIMIT 4
 #define PS_VALIDATE_LIMIT 4
+#define TA_VALIDATE_LIMIT 4
 
 class CRDSData  
 {
@@ -89,7 +90,7 @@ class CRDSData
 	BYTE m_RdsFifoEmpty;
 	rdsFifo_struct	m_RdsFifo[RDS_FIFO_SIZE];
 	int validation_limit;
-
+	int ta_validate_count;
 	
 	// RDS Radio Text
     BYTE m_rtDisplay[64];   // Displayed Radio Text
@@ -115,13 +116,17 @@ class CRDSData
 	WORD m_RdsBlocksValid;		// Number of valid blocks received
 	WORD m_RdsBlocksTotal;		// Total number of blocks expected
 
+	BYTE ecc;
+	BYTE v_ecc;
+	int c_ecc;
+
 
 
 	// Debug information storing number of each kind of group received
 	WORD m_debug_group_counters[32];
 
 	void UpdateRDSFifo(WORD* registers);
-	void SendToXPort(ULONG ulMsg, char *pszData, ULONG ulLength);
+	void SendToXPort(char *windowName, ULONG ulMsg, char *pszData, ULONG ulLength);
 	void update_pi(WORD current_pi);
 	void update_pty(BYTE current_pty);
 	//void update_alt_freq(WORD current_alt_freq);
@@ -130,7 +135,6 @@ class CRDSData
 	void display_rt();
 	void LogRDSDataStream(WORD* registers);
 	float ConvertAFFrequency(BYTE freq);
-
 
 public:
 	CRDSData();
@@ -153,6 +157,22 @@ public:
 	bool m_ta;
 	bool m_ms;
 	tAFMap AFMap;				// Alternate Frequencies
+
+	std::string TACallbackStartCommand;
+	short TACallbackStartDwData;
+	std::string TACallbackStartWindowName;
+
+	std::string TACallbackStopCommand;
+	short TACallbackStopDwData;
+	std::string TACallbackStopWindowName;
+
+	std::string RTCallbackWindowName;
+	short RTCallbackDwData;
+	std::string RTCallbackCommand;
+
+
+	bool TANowPlaying;
+
 };
 
 #endif // !defined(AFX_RDSDATA_H__A14C0C6B_E19E_4099_AD73_0EC6272CB271__INCLUDED_)
