@@ -506,7 +506,6 @@ bool CFMRadioDevice::OpenFMRadioAudio()
 		hr = g_pGraphBuilder->AddFilter(dsound, L"Default DirectSound Device");
 		OutputDebugString("Added Default DirectSound Device to graph builder\n");
 
-
 		// Search for our radio
 		IBaseFilter* radio;
 
@@ -580,7 +579,7 @@ bool CFMRadioDevice::OpenFMRadioAudio()
 		pSysDevEnum->Release();
 	}
 
-	hr = SaveGraphFile(g_pGraphBuilder, L"c:\\tmp\\mygraph.grf");
+	//hr = SaveGraphFile(g_pGraphBuilder, L"c:\\tmp\\mygraph.grf");
 
 	// I hope we've found the radio!!
 	g_pMediaControl->Run();
