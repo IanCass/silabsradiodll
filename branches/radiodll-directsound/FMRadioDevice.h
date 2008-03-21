@@ -332,6 +332,7 @@ public:
 
 private:
 	HRESULT CFMRadioDevice::LoadGraphFile(IGraphBuilder *pGraph, const WCHAR* wszName);
+	HRESULT CFMRadioDevice::SaveGraphFile(IGraphBuilder *pGraph, WCHAR *wszPath);
 	int CFMRadioDevice::InitDirectShow();
 
 //////////////////////

@@ -173,6 +173,11 @@ int CFMRadioDevice::InitDirectShow()
 	return 0;
 }
 
+/*
+* Load a predefined filter graph. This has to live in the same directory as
+* the dll & needs to be called "filter.grf"
+*
+*/
 HRESULT CFMRadioDevice::LoadGraphFile(IGraphBuilder *pGraph, const WCHAR* wszName)
 {
     IStorage *pStorage = 0;
@@ -428,6 +433,46 @@ bool CFMRadioDevice::SaveRadioSettings(RadioData* radioData)
 	return status;
 }
 
+HRESULT CFMRadioDevice::SaveGraphFile(IGraphBuilder *pGraph, WCHAR *wszPath) 
+{
+    const WCHAR wszStreamName[] = L"ActiveMovieGraph"; 
+    HRESULT hr;
+    
+    IStorage *pStorage = NULL;
+    hr = StgCreateDocfile(
+        wszPath,
+        STGM_CREATE | STGM_TRANSACTED | STGM_READWRITE | STGM_SHARE_EXCLUSIVE,
+        0, &pStorage);
+    if(FAILED(hr)) 
+    {
+        return hr;
+    }
+
+    IStream *pStream;
+    hr = pStorage->CreateStream(
+        wszStreamName,
+        STGM_WRITE | STGM_CREATE | STGM_SHARE_EXCLUSIVE,
+        0, 0, &pStream);
+    if (FAILED(hr)) 
+    {
+        pStorage->Release();    
+        return hr;
+    }
+
+    IPersistStream *pPersist = NULL;
+    pGraph->QueryInterface(IID_IPersistStream, (void**)&pPersist);
+    hr = pPersist->Save(pStream, TRUE);
+    pStream->Release();
+    pPersist->Release();
+    if (SUCCEEDED(hr)) 
+    {
+        hr = pStorage->Commit(STGC_DEFAULT);
+    }
+    pStorage->Release();
+    return hr;
+}
+
+
 bool CFMRadioDevice::OpenFMRadioAudio()
 {
 	bool status = false;
@@ -437,109 +482,109 @@ bool CFMRadioDevice::OpenFMRadioAudio()
 
 	int x = InitDirectShow();
 
-	//LoadGraphFile(g_pGraphBuilder, L"filter.grf");
+	// Firstly try to load a filter graph
+	hr = LoadGraphFile(g_pGraphBuilder, L"filter.grf");
 
-	// Create a Capture Filter Builder
-	hr = CoCreateInstance(CLSID_CaptureGraphBuilder2, NULL, CLSCTX_INPROC_SERVER, 
-		IID_ICaptureGraphBuilder2, (void**)&g_pCaptureGraphBuilder);
-	hr = g_pCaptureGraphBuilder->SetFiltergraph(g_pGraphBuilder);
+	// If this doesn't succeed, then make our own filter graph
+	if (SUCCEEDED(hr)) {
+		OutputDebugString("Loaded the filter graph\n");
+	} else {
+		OutputDebugString("Generating a filter graph\n");
+		// Create a Capture Filter Builder
+		hr = CoCreateInstance(CLSID_CaptureGraphBuilder2, NULL, CLSCTX_INPROC_SERVER, 
+			IID_ICaptureGraphBuilder2, (void**)&g_pCaptureGraphBuilder);
+		OutputDebugString("Created capture builder\n");
+		hr = g_pCaptureGraphBuilder->SetFiltergraph(g_pGraphBuilder);
+		OutputDebugString("Added graph builder to capture builder\n");
 
-	// Create our Direct Sound driver
-	IBaseFilter* dsound;
-	hr = CoCreateInstance(CLSID_DSoundRender, NULL, CLSCTX_INPROC_SERVER, 
-		IID_IBaseFilter, (void**)&dsound);
-	hr = g_pGraphBuilder->AddFilter(dsound, L"Default DirectSound Device");
+		// Create our Direct Sound driver
+
+		IBaseFilter* dsound;
+		hr = CoCreateInstance(CLSID_DSoundRender, NULL, CLSCTX_INPROC_SERVER, 
+			IID_IBaseFilter, (void**)&dsound);
+		OutputDebugString("Created Default DirectSound Device\n");
+		hr = g_pGraphBuilder->AddFilter(dsound, L"Default DirectSound Device");
+		OutputDebugString("Added Default DirectSound Device to graph builder\n");
 
 
-	// Search for our radio
-	IBaseFilter* radio;
+		// Search for our radio
+		IBaseFilter* radio;
 
-	// Create the System Device Enumerator.
-	ICreateDevEnum *pSysDevEnum = NULL;
-	hr = CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC_SERVER,
-		IID_ICreateDevEnum, (void **)&pSysDevEnum);
+		// Create the System Device Enumerator.
+		ICreateDevEnum *pSysDevEnum = NULL;
+		hr = CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC_SERVER,
+			IID_ICreateDevEnum, (void **)&pSysDevEnum);
+		OutputDebugString("Created device enumerator\n");
 
-	// Obtain a class enumerator for the audio category.
-	IEnumMoniker *pEnumCat = NULL;
-	hr = pSysDevEnum->CreateClassEnumerator(CLSID_AudioInputDeviceCategory, &pEnumCat, 0);
+		// Obtain a class enumerator for the audio category.
+		IEnumMoniker *pEnumCat = NULL;
+		hr = pSysDevEnum->CreateClassEnumerator(CLSID_AudioInputDeviceCategory, &pEnumCat, 0);
+		OutputDebugString("Created class enumerator\n");
 
-	if (hr == S_OK) 
-	{
-		// Enumerate the monikers.
-		IMoniker *pMoniker = NULL;
-		ULONG cFetched;
-		while(pEnumCat->Next(1, &pMoniker, &cFetched) == S_OK)
+		if (SUCCEEDED(hr)) 
 		{
-			IPropertyBag *pPropBag;
-			hr = pMoniker->BindToStorage(0, 0, IID_IPropertyBag, 
-				(void **)&pPropBag);
-			if (SUCCEEDED(hr))
+			// Enumerate the monikers.
+			IMoniker *pMoniker = NULL;
+			ULONG cFetched;
+			while(pEnumCat->Next(1, &pMoniker, &cFetched) == S_OK)
 			{
-				// To retrieve the filter's friendly name, do the following:
-				VARIANT varName;
-				VariantInit(&varName);
-				hr = pPropBag->Read(L"FriendlyName", &varName, 0);
+				IPropertyBag *pPropBag;
+				hr = pMoniker->BindToStorage(0, 0, IID_IPropertyBag, 
+					(void **)&pPropBag);
 				if (SUCCEEDED(hr))
 				{
-					if(!wcscmp((wchar_t*)V_BSTR(&varName), L"FM Radio")
-						|| !wcscmp((wchar_t*)V_BSTR(&varName), L"ADS InstantFM Music")
-						|| !wcscmp((wchar_t*)V_BSTR(&varName), L"RDing PCear FM Radio")
-						) {
+					OutputDebugString("Bound to storage\n");
+					// To retrieve the filter's friendly name, do the following:
+					VARIANT varName;
+					VariantInit(&varName);
+					hr = pPropBag->Read(L"FriendlyName", &varName, 0);
+					if (SUCCEEDED(hr))
+					{
+						OutputDebugString("Found device...");
+						// See if this filter is our radio
+						if(wcscmp((wchar_t*)V_BSTR(&varName), L"FM Radio")
+							|| !wcscmp((wchar_t*)V_BSTR(&varName), L"ADS InstantFM Music")
+							|| !wcscmp((wchar_t*)V_BSTR(&varName), L"RDing PCear FM Radio")
+							) {
+							OutputDebugString("it's not the radio\n");
+						} else {
+							OutputDebugString("it's the radio\n");
+							// create an instance of the filter
+							hr = pMoniker->BindToObject(NULL, NULL, IID_IBaseFilter,
+								(void**)&radio);
+							OutputDebugString("Bound to object\n");
 
-						// create an instance of the filter
-						hr = pMoniker->BindToObject(NULL, NULL, IID_IBaseFilter,
-							(void**)&radio);
-						// Now add the filter to the graph. 
-						hr = g_pGraphBuilder->AddFilter(radio, L"FM Radio");
-						hr = g_pCaptureGraphBuilder->RenderStream(NULL, &MEDIATYPE_Audio, radio, NULL, dsound);
-						break;
+							// Now add the filter to the graph. 
+							hr = g_pGraphBuilder->AddFilter(radio, L"FM Radio");
+							OutputDebugString("Added filter to graph builder\n");
+
+							// Force render "FM Radio -> Default DirectSound Device"
+							hr = g_pCaptureGraphBuilder->RenderStream(NULL, &MEDIATYPE_Audio, radio, NULL, dsound);
+
+							// Allow DirectShow to render
+							//hr = g_pCaptureGraphBuilder->RenderStream(NULL, &MEDIATYPE_Audio, radio, NULL, NULL);
+							OutputDebugString("Rendered!!\n");
+							break;
+						}
 					}
-					//OutputDebugString(V_BSTR(&varName));
+					VariantClear(&varName);
+
+
+					//Remember to release pFilter later.
+					pPropBag->Release();
 				}
-				VariantClear(&varName);
-
-
-				//Remember to release pFilter later.
-				pPropBag->Release();
+				pMoniker->Release();
 			}
-			pMoniker->Release();
+			pEnumCat->Release();
 		}
-		pEnumCat->Release();
+		pSysDevEnum->Release();
 	}
-	pSysDevEnum->Release();
 
+	hr = SaveGraphFile(g_pGraphBuilder, L"c:\\tmp\\mygraph.grf");
 
 	// I hope we've found the radio!!
 	g_pMediaControl->Run();
 
-
-	/*
-	CoInitialize(NULL);
-	//CComPtr<IGraphBuilder> g_pGraphBuilder;
-	g_pGraphBuilder.CoCreateInstance(CLSID_FilterGraph);
-	
-
-
-	HRESULT hr = S_OK;
-
-	CComPtr<ICaptureGraphBuilder2> pBuilder;
-	hr = pBuilder.CoCreateInstance(CLSID_CaptureGraphBuilder2);
-	hr = pBuilder->SetFiltergraph(g_pGraphBuilder);
-
-	CComPtr<IBaseFilter> pFMRadio;
-	hr = pFMRadio.CoCreateInstance(CLSID_AudioRecord);
-	hr = g_pGraphBuilder->AddFilter(pFMRadio, L"FM Radio");
-
-	CComPtr<IBaseFilter> pDefaultDirectSoundDevice;
-	hr = pDefaultDirectSoundDevice.CoCreateInstance(CLSID_DSoundRender);
-	hr = g_pGraphBuilder->AddFilter(pDefaultDirectSoundDevice, L"Default DirectSound Device");
-
-
-	hr = pBuilder->RenderStream(NULL, &MEDIATYPE_Audio, pFMRadio, NULL, pDefaultDirectSoundDevice);
-
-	CComQIPtr<IMediaControl, &IID_IMediaControl> mediaControl(g_pGraphBuilder);
-	hr = mediaControl->Run();
-	*/
 
 	return status;
 }
