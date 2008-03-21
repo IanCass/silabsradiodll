@@ -1,0 +1,1 @@
+Choose a filter graph that you want, rename it to "filter.grf" and copy it to the same directory as the usbradio.dll. Alternatively, make your own graphs with graphedit.

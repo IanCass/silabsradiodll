@@ -56,7 +56,7 @@
 				AdditionalIncludeDirectories="framework;include"
 				PreprocessorDefinitions="WIN32;NDEBUG;_WINDOWS;_USRDLL;USBRADIO_EXPORTS"
 				StringPooling="true"
-				RuntimeLibrary="2"
+				RuntimeLibrary="0"
 				EnableFunctionLevelLinking="true"
 				UsePrecompiledHeader="2"
 				PrecompiledHeaderThrough="stdafx.h"
