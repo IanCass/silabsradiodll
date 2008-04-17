@@ -20,7 +20,7 @@ static std::ofstream outfile;
 #endif
 //////////////////////////////
 
-#define RADIO_TIMER_PERIOD 20	/* Call StreamAudio every RADIO_TIMER_PERIOD ms */
+#define RADIO_TIMER_PERIOD 50	/* Call StreamAudio every RADIO_TIMER_PERIOD ms */
 
 #define INITGUID	// have to define this so next line actually creates GUID structure
 DEFINE_GUID(CLSID_silabs, 
@@ -73,6 +73,8 @@ DWORD WINAPI RadioThread( LPVOID lpParam )
 			}
 		}
 		*/
+
+
 
 		// Wait next turn
 		Sleep (RADIO_TIMER_PERIOD);
@@ -300,7 +302,7 @@ bool CFMRadioDevice::GetRDSData(RDSData* rdsData)
 
 	if (&rdsData) {
 
-		//XYLock myLock(&gRDSCriticalSection);
+		XYLock myLock(&gRDSCriticalSection);
 
 		//EnterCriticalSection(&gRDSCriticalSection);
 		//dwWaitResult = WaitForSingleObject( 
@@ -541,9 +543,9 @@ bool CFMRadioDevice::OpenFMRadioAudio()
 					{
 						OutputDebugString("Found device...");
 						// See if this filter is our radio
-						if(wcscmp((wchar_t*)V_BSTR(&varName), L"FM Radio")
-							|| !wcscmp((wchar_t*)V_BSTR(&varName), L"ADS InstantFM Music")
-							|| !wcscmp((wchar_t*)V_BSTR(&varName), L"RDing PCear FM Radio")
+						if((wcscmp((wchar_t*)V_BSTR(&varName), L"FM Radio") != 0)
+							&& (wcscmp((wchar_t*)V_BSTR(&varName), L"ADS InstantFM Music") != 0)
+							&& (wcscmp((wchar_t*)V_BSTR(&varName), L"RDing PCear FM Radio") != 0)
 							) {
 							OutputDebugString("it's not the radio\n");
 						} else {
@@ -1407,6 +1409,8 @@ bool CFMRadioDevice::ReadAllRegisters(FMRADIO_REGISTER *registers)
 bool CFMRadioDevice::ChangeLED(BYTE ledState)
 {
 	bool status = false;
+
+	return true; // do nothing
 
 	//Set the LED report with the state of the LED
 	BYTE ledReport[LED_REPORT_SIZE] = {LED_COMMAND, ledState, 0xFF};

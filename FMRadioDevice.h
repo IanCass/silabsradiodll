@@ -446,6 +446,7 @@ public:
 	int CurrFreq;	
 	int QueFreq;
 	bool PopOut;
+	bool	ChangeLED(BYTE ledState);
 
 private:
 
@@ -458,7 +459,7 @@ private:
 	
 	bool	StreamAudioIn();
 	bool	StreamAudioOut();
-	bool	ChangeLED(BYTE ledState);
+
 	int     m_LastKnownRadioIndex;
 
 	IGraphBuilder*	g_pGraphBuilder;
