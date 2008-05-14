@@ -246,6 +246,7 @@ typedef BYTE	SCRATCH_PAGE[SCRATCH_PAGE_SIZE];
 typedef struct RadioData
 {
 	bool firstRun;
+	bool enableDirectShow;
 	BYTE swVersion;
 	BYTE hwVersion;
 	BYTE partNumber;

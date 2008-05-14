@@ -16,6 +16,7 @@
 
 //Tested
 USBRADIO_API bool __stdcall         HWInit();
+USBRADIO_API bool __stdcall	        HWInitEx(bool enableSound);
 USBRADIO_API bool __stdcall         HWDeInit();
 USBRADIO_API bool __stdcall         FMTune (long frequency);
 USBRADIO_API unsigned int __stdcall GetSignal();

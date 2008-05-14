@@ -124,6 +124,12 @@ CFMRadioDevice::CFMRadioDevice(bool primary)
 	m_Endpoint1ReportBufferSize = 0;
 	m_Endpoint2ReportBufferSize = 0;
 
+	// Initialize DirectShow interfaces explicitly
+	g_pGraphBuilder = NULL;
+	g_pMediaControl = NULL;
+	g_pMediaEvent = NULL;
+	g_pMediaPosition = NULL;
+
 	//The radio is not streaming or tuning initially
 	m_StreamingAllowed = false;
 	m_Streaming = false;
@@ -240,14 +246,18 @@ BYTE CFMRadioDevice::OpenFMRadio(RadioData* radioData)
 	}
 
 	if (primaryRadio) {
-		//Open the FM Radio audio input
-		if (!OpenFMRadioAudio()) {
-			return (STATUS_FMRADIOAUDIO_ERROR);
-		}
 
-		//Open the sound card
-		if (!OpenSoundCard()) {
-			return (STATUS_OUTPUTAUDIO_ERROR);
+		//Only initialize sound if DirectShow is enabled
+		if (radioData->enableDirectShow) {
+			//Open the FM Radio audio input
+			if (!OpenFMRadioAudio()) {
+				return (STATUS_FMRADIOAUDIO_ERROR);
+			}
+
+			//Open the sound card
+			if (!OpenSoundCard()) {
+				return (STATUS_OUTPUTAUDIO_ERROR);
+			}
 		}
 
 		//Tune to the current station
@@ -264,6 +274,7 @@ bool CFMRadioDevice::CloseFMRadio()
 	//Close all pipes
 	CloseFMRadioAudio();
 	CloseSoundCard();
+
 	CloseFMRadioData();
 
 	status = true;
@@ -602,7 +613,10 @@ bool CFMRadioDevice::OpenSoundCard()
 bool CFMRadioDevice::CloseFMRadioAudio()
 {
 	bool status = false;
-	g_pMediaControl->Stop();
+
+	if (g_pMediaControl != NULL) {
+		g_pMediaControl->Stop();
+	}
 
 	status = true;
 	return status;
@@ -915,13 +929,16 @@ bool CFMRadioDevice::Mute(bool mute)
 	if (mute)
 	{
 		m_AudioAllowed = false;
-		g_pMediaControl->Pause();
-
+		if (g_pMediaControl != NULL) {
+			g_pMediaControl->Pause();
+		}
 	}
 	else
 	{
 		m_AudioAllowed = true;
-		g_pMediaControl->Run();
+		if (g_pMediaControl != NULL) {
+			g_pMediaControl->Run();
+		}
 	}
 
 	return true;

@@ -167,8 +167,18 @@ GetModuleInfo ()
 USBRADIO_API bool __stdcall
 HWInit ()
 {
+	return HWInitEx(true);
+}
+
+USBRADIO_API bool __stdcall
+HWInitEx (bool enableSound)
+{
+
+	// Populate configuration parameters
+	radioData.enableDirectShow = enableSound;
 
 	bool ret = OpenFMRadio(&fmRadioDevice);
+
 	//ret = OpenFMRadio(&fmRadioDevice2);
 
 	//h_afTimer = CreateThread(NULL, 0, AFThread, NULL, 0, NULL); 
