@@ -14,6 +14,8 @@
 typedef GUID *LPGUID;
 
 #include <windows.h>
+#include <streams.h>
+
 
 //ULONG/DWORD pointer types defined for DDK if not already
 #ifndef ULONG_PTR
@@ -233,13 +235,12 @@ typedef BYTE	SCRATCH_PAGE[SCRATCH_PAGE_SIZE];
 //Number of presets definition
 #define PRESET_NUM	12
 
-//Global variables for the critical section and 
-//free block count, used by callback functions
-static CRITICAL_SECTION gWaveCriticalSection;
-static volatile BYTE gWaveFreeBlockCount;
-
-//Global callback function for when wave out terminates
-static void CALLBACK waveOutProc(HWAVEOUT hwo, UINT uMsg, DWORD dwInstance, DWORD dwParam1, DWORD dwParam2);
+// convenient macro for releasing interfaces
+#define HELPER_RELEASE(x)   if (x != NULL) \
+                            { \
+                                x->Release(); \
+                                x = NULL; \
+                            }
 
 //Structure that contains all useful data about the radio - filled from the scratch page
 typedef struct RadioData
@@ -329,6 +330,11 @@ public:
 	CFMRadioDevice(bool primary);
 	virtual ~CFMRadioDevice();
 
+private:
+	HRESULT CFMRadioDevice::LoadGraphFile(IGraphBuilder *pGraph, const WCHAR* wszName);
+	HRESULT CFMRadioDevice::SaveGraphFile(IGraphBuilder *pGraph, WCHAR *wszPath);
+	int CFMRadioDevice::InitDirectShow();
+
 //////////////////////
 //General Functionality
 
@@ -376,7 +382,6 @@ public:
 
 private:
 	bool	OpenFMRadioData();
-	int		GetAudioDeviceIndex();
 	bool	GetRadioData(RadioData* radioData);
 	bool	SetRadioData(RadioData* radioData);
 	bool	InitializeRadioData(RadioData* radioData);
@@ -422,15 +427,10 @@ private:
 //USB Audio  Functionality
 
 public:
-	void	InitializeStream();
-	void	StreamAudio();
 	bool	IsStreaming();
 	bool	IsTuning();
 	BYTE	GetWaveOutVolume();
 	bool	SetWaveOutVolume(BYTE level);
-
-	int		GetLastKnownRadioIndex();
-	void	SetNewRadioIndex(int index);
 
 	bool CreateRadioTimer();
     bool DestroyRadioTimer();
@@ -446,20 +446,9 @@ public:
 	int CurrFreq;	
 	int QueFreq;
 	bool PopOut;
+	bool	ChangeLED(BYTE ledState);
 
 private:
-
-	HWAVEIN		m_FMRadioAudioHandle;
-	HWAVEOUT	m_SoundCardHandle;
-
-	int			m_LastKnownRadioIndex;
-
-	WAVEFORMATEX	m_FMRadioWaveFormat;
-
-	WAVEHDR		m_InputHeader;
-	WAVEHDR*	m_OutputHeader;
-	char*		m_WaveformBuffer;
-		
 
 	bool		m_StreamingAllowed;
 	bool		m_AudioAllowed;
@@ -470,13 +459,22 @@ private:
 	
 	bool	StreamAudioIn();
 	bool	StreamAudioOut();
-	bool	ChangeLED(BYTE ledState);
 
-	WAVEHDR*	AllocateBlocks(int size, int count);
-	void		FreeBlocks(WAVEHDR*);
+	int     m_LastKnownRadioIndex;
+
+	IGraphBuilder*	g_pGraphBuilder;
+	ICaptureGraphBuilder2*  g_pCaptureGraphBuilder;
+	//CComPtr<IGraphBuilder> g_pGraphBuilder;
+
+	IMediaControl*	g_pMediaControl;
+	IMediaEventEx*	g_pMediaEvent;
+	IMediaPosition*	g_pMediaPosition;
+
+
 
 	HANDLE h_radioTimer;
 	HANDLE h_rdsTimer;
+
 
 ////////////////////////////
 ////////////////////////////

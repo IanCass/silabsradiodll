@@ -8,6 +8,9 @@
 #include <vector>
 #include "XYCriticalSection.h"
 #include "XYLock.h"
+#include <initguid.h>
+
+
 
 //////////// DEBUG ////////////
 //#define DOLOG
@@ -17,8 +20,12 @@ static std::ofstream outfile;
 #endif
 //////////////////////////////
 
-#define RADIO_TIMER_PERIOD 20	/* Call StreamAudio every RADIO_TIMER_PERIOD ms */
+#define RADIO_TIMER_PERIOD 50	/* Call StreamAudio every RADIO_TIMER_PERIOD ms */
 
+#define INITGUID	// have to define this so next line actually creates GUID structure
+DEFINE_GUID(CLSID_silabs, 
+			//0x36FC9E60, 0xC465, 0x11CF, 0x80, 0x56, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00);
+			0x65e8773d, 0x8f56, 0x11d0, 0xa3, 0xb9, 0x00, 0xa0, 0xc9, 0x22, 0x31, 0x96);
 
 static bool ShouldQuit;			/* Variable Outside Class for Direct Thread access */
 /* Variable Outside Class for Direct Thread access */
@@ -32,6 +39,7 @@ DWORD WINAPI RadioThread( LPVOID lpParam )
 
 
 		// Pop Removal
+		/*
 		if(((CFMRadioDevice*)lpParam)->PopOut) {
 			if(!OldVol) {
 				OldVol = ((CFMRadioDevice*)lpParam)->GetWaveOutVolume();
@@ -43,13 +51,18 @@ DWORD WINAPI RadioThread( LPVOID lpParam )
 			UnMuteCount = 15;
 			((CFMRadioDevice*)lpParam)->PopOut = false;
 		}
+		*/
+
 
 		//If new freq waiting to be tuned, do it
 		int cf = ((CFMRadioDevice*)lpParam)->CurrFreq;
 		int qf = ((CFMRadioDevice*)lpParam)->QueFreq;
-		if (qf != cf) ((CFMRadioDevice*)lpParam)->DoTune((double)qf/10.0);
+		if (qf != cf) {
+			((CFMRadioDevice*)lpParam)->DoTune((double)qf/10.0);
+		}
 
 		// Restore mute status
+		/*
 		if(OldVol) {
 			if(!UnMuteCount--) {
 				if(((CFMRadioDevice*)lpParam)->ExFlags & FLAG_MUTESTREAM)
@@ -59,10 +72,9 @@ DWORD WINAPI RadioThread( LPVOID lpParam )
 				OldVol = 0;
 			}
 		}
+		*/
 
 
-		// Process Audio
-		((CFMRadioDevice*)lpParam)->StreamAudio();
 
 		// Wait next turn
 		Sleep (RADIO_TIMER_PERIOD);
@@ -100,20 +112,9 @@ CFMRadioDevice::CFMRadioDevice(bool primary)
 	outfile << "FM Log Started\n";
 #endif
 
-	//Initialize the critical section variable used for exclusivity
-	InitializeCriticalSection(&gWaveCriticalSection);
-	//InitializeCriticalSection(&gRDSCriticalSection);
-
-	//gRDSMutex = CreateMutex( 
-	//    NULL,              // default security attributes
-	//    FALSE,             // initially not owned
-	//    "RDS Mutex");      // Mutex name
-
 	//Make the handles NULL to begin with
-	m_FMRadioAudioHandle = NULL;
 	m_FMRadioDataHandle = NULL;
 	m_FMRadioRDSHandle = NULL;
-	m_SoundCardHandle = NULL;
 
 	//Set the input buffer pointers to NULL, and size to 0
 	m_pEndpoint0ReportBuffer = NULL;
@@ -130,35 +131,8 @@ CFMRadioDevice::CFMRadioDevice(bool primary)
 	m_AudioAllowed = true;
 	primaryRadio = primary;
 
-	//Setup the wave format based on our defined audio data
-	m_FMRadioWaveFormat.wFormatTag = WAVE_FORMAT_PCM;
-	m_FMRadioWaveFormat.nSamplesPerSec = SAMPLES_PER_SECOND;
-	m_FMRadioWaveFormat.wBitsPerSample = BITS_PER_SAMPLE;
-	m_FMRadioWaveFormat.nChannels = CHANNELS;
-
-	// Opening the audio stream from a DLL requires this?
-	m_FMRadioWaveFormat.nBlockAlign= 0xcccc;
-	m_FMRadioWaveFormat.nAvgBytesPerSec = 0xcccccccc;
-	m_FMRadioWaveFormat.cbSize = 0xcccc;
-
 	//Set the last known radio index to negative since there hasnt been a radio attached yet
 	m_LastKnownRadioIndex = -1;
-
-	//The current block starts at zero, and all blocks are initially free
-	m_CurrentBlock = 0;
-	m_FreeBlock = 0;
-	gWaveFreeBlockCount = BLOCK_COUNT;
-
-	//Allocate memory for the blocks of audio data to stream
-	m_OutputHeader = AllocateBlocks(BLOCK_SIZE, BLOCK_COUNT);
-
-	m_WaveformBuffer = (char*)malloc(BLOCK_SIZE);
-	m_InputHeader.lpData = m_WaveformBuffer;
-	m_InputHeader.dwBufferLength = BLOCK_SIZE;
-	m_InputHeader.dwFlags = 0;
-
-	// Initialize our radio timer to NULL
-	h_radioTimer = NULL;
 
 	// Initialize the previous process priority to 0
 	m_previous_process_priority = 0;
@@ -178,10 +152,70 @@ CFMRadioDevice::CFMRadioDevice(bool primary)
 
 CFMRadioDevice::~CFMRadioDevice()
 {
-	//Free all allocated memory when destroyed
-	FreeBlocks(m_OutputHeader);
-	free(m_WaveformBuffer);
+	//HELPER_RELEASE(g_pMediaPosition);
+    //HELPER_RELEASE(g_pMediaEvent);
+    //HELPER_RELEASE(g_pMediaControl);
+    //HELPER_RELEASE(g_pGraphBuilder);
+
+
 }
+
+int CFMRadioDevice::InitDirectShow()
+{
+	HRESULT hr;
+
+	hr = CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER,
+	IID_IGraphBuilder,(void**)&g_pGraphBuilder);
+	
+	if (FAILED(hr))
+		return -1;
+	g_pGraphBuilder->QueryInterface(IID_IMediaControl, (void**)&g_pMediaControl);
+	g_pGraphBuilder->QueryInterface(IID_IMediaEvent, (void**)&g_pMediaEvent);
+	g_pGraphBuilder->QueryInterface(IID_IMediaPosition, (void**)g_pMediaPosition);
+	return 0;
+}
+
+/*
+* Load a predefined filter graph. This has to live in the same directory as
+* the dll & needs to be called "filter.grf"
+*
+*/
+HRESULT CFMRadioDevice::LoadGraphFile(IGraphBuilder *pGraph, const WCHAR* wszName)
+{
+    IStorage *pStorage = 0;
+    if (S_OK != StgIsStorageFile(wszName))
+    {
+        return E_FAIL;
+    }
+    HRESULT hr = StgOpenStorage(wszName, 0, 
+        STGM_TRANSACTED | STGM_READ | STGM_SHARE_DENY_WRITE, 
+        0, 0, &pStorage);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+    IPersistStream *pPersistStream = 0;
+    hr = pGraph->QueryInterface(IID_IPersistStream,
+             reinterpret_cast<void**>(&pPersistStream));
+    if (SUCCEEDED(hr))
+    {
+        IStream *pStream = 0;
+        hr = pStorage->OpenStream(L"ActiveMovieGraph", 0, 
+            STGM_READ | STGM_SHARE_EXCLUSIVE, 0, &pStream);
+        if(SUCCEEDED(hr))
+        {
+            hr = pPersistStream->Load(pStream);
+            pStream->Release();
+        }
+        pPersistStream->Release();
+    }
+    pStorage->Release();
+    return hr;
+}
+
+
+
+
 
 BYTE CFMRadioDevice::OpenFMRadio(RadioData* radioData)
 {
@@ -268,7 +302,7 @@ bool CFMRadioDevice::GetRDSData(RDSData* rdsData)
 
 	if (&rdsData) {
 
-		//XYLock myLock(&gRDSCriticalSection);
+		XYLock myLock(&gRDSCriticalSection);
 
 		//EnterCriticalSection(&gRDSCriticalSection);
 		//dwWaitResult = WaitForSingleObject( 
@@ -401,377 +435,176 @@ bool CFMRadioDevice::SaveRadioSettings(RadioData* radioData)
 	return status;
 }
 
+HRESULT CFMRadioDevice::SaveGraphFile(IGraphBuilder *pGraph, WCHAR *wszPath) 
+{
+    const WCHAR wszStreamName[] = L"ActiveMovieGraph"; 
+    HRESULT hr;
+    
+    IStorage *pStorage = NULL;
+    hr = StgCreateDocfile(
+        wszPath,
+        STGM_CREATE | STGM_TRANSACTED | STGM_READWRITE | STGM_SHARE_EXCLUSIVE,
+        0, &pStorage);
+    if(FAILED(hr)) 
+    {
+        return hr;
+    }
+
+    IStream *pStream;
+    hr = pStorage->CreateStream(
+        wszStreamName,
+        STGM_WRITE | STGM_CREATE | STGM_SHARE_EXCLUSIVE,
+        0, 0, &pStream);
+    if (FAILED(hr)) 
+    {
+        pStorage->Release();    
+        return hr;
+    }
+
+    IPersistStream *pPersist = NULL;
+    pGraph->QueryInterface(IID_IPersistStream, (void**)&pPersist);
+    hr = pPersist->Save(pStream, TRUE);
+    pStream->Release();
+    pPersist->Release();
+    if (SUCCEEDED(hr)) 
+    {
+        hr = pStorage->Commit(STGC_DEFAULT);
+    }
+    pStorage->Release();
+    return hr;
+}
+
+
 bool CFMRadioDevice::OpenFMRadioAudio()
 {
 	bool status = false;
 
-	//Check the last known radio index, if it is not negative attemp to
-	//open this device, it will probably be the radio
-	if (m_LastKnownRadioIndex >= 0)
-	{
-		//If the open succeeds, then return status true, otherwise set the radio index to -1 to try again
-		if (waveInOpen(&m_FMRadioAudioHandle,
-			m_LastKnownRadioIndex,
-			&m_FMRadioWaveFormat, 
-			NULL, NULL, CALLBACK_NULL) == MMSYSERR_NOERROR)
-		{
-			status = true;
-		}
-		else
-		{
-			m_LastKnownRadioIndex = -1;
-		}
-	}
+	status = true;
+	HRESULT hr = S_OK;
 
-	//If status isn't true, then the radio didn't open successfully, or we are opening
-	//the radio for the first time
-	if (!status)
-	{
-		//Get the index of the audio device
-		m_LastKnownRadioIndex = GetAudioDeviceIndex();
+	int x = InitDirectShow();
 
-		//If a valid index is returned open the audio device
-		if (m_LastKnownRadioIndex >= 0)
+	// Firstly try to load a filter graph
+	hr = LoadGraphFile(g_pGraphBuilder, L"filter.grf");
+
+	// If this doesn't succeed, then make our own filter graph
+	if (SUCCEEDED(hr)) {
+		OutputDebugString("Loaded the filter graph\n");
+	} else {
+		OutputDebugString("Generating a filter graph\n");
+		// Create a Capture Filter Builder
+		hr = CoCreateInstance(CLSID_CaptureGraphBuilder2, NULL, CLSCTX_INPROC_SERVER, 
+			IID_ICaptureGraphBuilder2, (void**)&g_pCaptureGraphBuilder);
+		OutputDebugString("Created capture builder\n");
+		hr = g_pCaptureGraphBuilder->SetFiltergraph(g_pGraphBuilder);
+		OutputDebugString("Added graph builder to capture builder\n");
+
+		// Create our Direct Sound driver
+
+		IBaseFilter* dsound;
+		hr = CoCreateInstance(CLSID_DSoundRender, NULL, CLSCTX_INPROC_SERVER, 
+			IID_IBaseFilter, (void**)&dsound);
+		OutputDebugString("Created Default DirectSound Device\n");
+		hr = g_pGraphBuilder->AddFilter(dsound, L"Default DirectSound Device");
+		OutputDebugString("Added Default DirectSound Device to graph builder\n");
+
+		// Search for our radio
+		IBaseFilter* radio;
+
+		// Create the System Device Enumerator.
+		ICreateDevEnum *pSysDevEnum = NULL;
+		hr = CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC_SERVER,
+			IID_ICreateDevEnum, (void **)&pSysDevEnum);
+		OutputDebugString("Created device enumerator\n");
+
+		// Obtain a class enumerator for the audio category.
+		IEnumMoniker *pEnumCat = NULL;
+		hr = pSysDevEnum->CreateClassEnumerator(CLSID_AudioInputDeviceCategory, &pEnumCat, 0);
+		OutputDebugString("Created class enumerator\n");
+
+		if (SUCCEEDED(hr)) 
 		{
-			DWORD ret = waveInOpen(&m_FMRadioAudioHandle,
-				m_LastKnownRadioIndex,
-				&m_FMRadioWaveFormat,
-				NULL, NULL, CALLBACK_NULL);
-
-			//If the audio device opens successfully, then return true
-			if (ret == MMSYSERR_NOERROR)
+			// Enumerate the monikers.
+			IMoniker *pMoniker = NULL;
+			ULONG cFetched;
+			while(pEnumCat->Next(1, &pMoniker, &cFetched) == S_OK)
 			{
-				status = true;
+				IPropertyBag *pPropBag;
+				hr = pMoniker->BindToStorage(0, 0, IID_IPropertyBag, 
+					(void **)&pPropBag);
+				if (SUCCEEDED(hr))
+				{
+					OutputDebugString("Bound to storage\n");
+					// To retrieve the filter's friendly name, do the following:
+					VARIANT varName;
+					VariantInit(&varName);
+					hr = pPropBag->Read(L"FriendlyName", &varName, 0);
+					if (SUCCEEDED(hr))
+					{
+						OutputDebugString("Found device...");
+						// See if this filter is our radio
+						if((wcscmp((wchar_t*)V_BSTR(&varName), L"FM Radio") != 0)
+							&& (wcscmp((wchar_t*)V_BSTR(&varName), L"ADS InstantFM Music") != 0)
+							&& (wcscmp((wchar_t*)V_BSTR(&varName), L"RDing PCear FM Radio") != 0)
+							) {
+							OutputDebugString("it's not the radio\n");
+						} else {
+							OutputDebugString("it's the radio\n");
+							// create an instance of the filter
+							hr = pMoniker->BindToObject(NULL, NULL, IID_IBaseFilter,
+								(void**)&radio);
+							OutputDebugString("Bound to object\n");
+
+							// Now add the filter to the graph. 
+							hr = g_pGraphBuilder->AddFilter(radio, L"FM Radio");
+							OutputDebugString("Added filter to graph builder\n");
+
+							// Force render "FM Radio -> Default DirectSound Device"
+							hr = g_pCaptureGraphBuilder->RenderStream(NULL, &MEDIATYPE_Audio, radio, NULL, dsound);
+
+							// Allow DirectShow to render
+							//hr = g_pCaptureGraphBuilder->RenderStream(NULL, &MEDIATYPE_Audio, radio, NULL, NULL);
+							OutputDebugString("Rendered!!\n");
+							break;
+						}
+					}
+					VariantClear(&varName);
+
+
+					//Remember to release pFilter later.
+					pPropBag->Release();
+				}
+				pMoniker->Release();
 			}
+			pEnumCat->Release();
 		}
+		pSysDevEnum->Release();
 	}
+
+	//hr = SaveGraphFile(g_pGraphBuilder, L"c:\\tmp\\mygraph.grf");
+
+	// I hope we've found the radio!!
+	g_pMediaControl->Run();
+
 
 	return status;
 }
 
-int CFMRadioDevice::GetAudioDeviceIndex()
-{
-	//This function is designed to open up the audio handle to the USB Radio. In
-	//Windows XP, the audio portion of the USB Radio will come up as "FM Radio". If
-	//this string is found, the radio will open the first one immediately, and begin
-	//to play it. If it isn't found then it will go through the device list and look
-	//for "USB Audio Device", which shows up in Windows 2000. If only one is found, then
-	//it will go ahead and open it immediately as well since the device will be the radio.
-	//However if more devices (or none) are found then it will prompt with a list for the 
-	//user to select the correct USB Audio device from the list.
-
-	int index = -1;
-	std::vector<std::string> deviceList;
-
-	//Obtain the number of input devices on the system
-	DWORD numWaveInputDevices = waveInGetNumDevs();
-
-	//Scan through each input device to see if we can find the FM Radio
-	for (DWORD i = 0; i < numWaveInputDevices; i++)
-	{
-		WAVEINCAPS waveInputCapabilities;
-
-		//Get the device capabilities of the currently indexed device
-		if (waveInGetDevCaps(i, &waveInputCapabilities, sizeof(waveInputCapabilities)) == MMSYSERR_NOERROR)
-		{
-			//If FM Radio is found, open the radio immediately, this is our device
-			if (!strcmp(waveInputCapabilities.szPname, "FM Radio")
-				|| !strcmp(waveInputCapabilities.szPname, "ADS InstantFM Music")
-				|| !strcmp(waveInputCapabilities.szPname, "RDing PCear FM Radio"))
-			{
-				//Set the current index to i, and set i to numWaveInputDevices to break
-				//out of the for loop
-				index = i;
-				i = numWaveInputDevices;
-			}
-			else
-			{
-				//Otherwise push back the string of the device on the list
-				deviceList.push_back(waveInputCapabilities.szPname);
-			}		
-		}
-	}
-
-#if 0
-	//If we haven't found a valid index, then start looking at the strings
-	if (index < 0)
-	{
-		DWORD usbAudioDeviceNum = 0;
-
-		//Go through the list of device strings
-		for (int i = 0; i < deviceList.size(); i++)
-		{
-			//See if a "USB Audio Device" is found
-			if (deviceList[i].find("USB Audio Device", 0))
-			{
-				//Increment the usb audio device number, and set our current index
-				usbAudioDeviceNum++;
-				index = i;
-			}
-		}
-
-		//If more than one (or no deivices) are found, then the user needs
-		//to select their audio input device from the list
-		if (usbAudioDeviceNum != 1)
-		{
-			//Reset the index to -1, invalid
-			index = -1;
-			//Bring up the device select dialog by passing it the audio input
-			//device list
-			CDeviceSelectDlg deviceSelectDlg(&deviceList);
-
-			if (deviceSelectDlg.DoModal() == IDOK)
-			{
-				//If OK is pressed, get the index selected
-				index = deviceSelectDlg.GetIndex();
-			}
-		}
-
-	}
-#endif
-
-	//Return the index that will be used
-	return index;
-}
-
-int	CFMRadioDevice::GetLastKnownRadioIndex()
-{
-	//Gets the last known radio index variable
-	return m_LastKnownRadioIndex;
-}
-
-void CFMRadioDevice::SetNewRadioIndex(int index)
-{
-	//Disable audio
-	bool reEnableAudio = m_Streaming;
-	m_Tuning = true;
-	CloseFMRadioAudio();
-
-	//Set the new index
-	m_LastKnownRadioIndex = index;
-
-	//Open the audio again (the new index will be used)
-	OpenFMRadioAudio();
-
-	//Enable audio again if we were streaming
-	if (reEnableAudio)
-	{
-		InitializeStream();
-	}
-
-	m_Tuning = false;
-}
 
 bool CFMRadioDevice::OpenSoundCard()
 {
 	bool status = false;
-	DWORD res;
-
-	//Open a handle to the default wave output device (sound card)
-	if ((res = waveOutOpen(&m_SoundCardHandle, WAVE_MAPPER,
-		&m_FMRadioWaveFormat, (DWORD)waveOutProc,
-		(DWORD)&gWaveFreeBlockCount, CALLBACK_FUNCTION)) == MMSYSERR_NOERROR)
-	{
-		status = true;
-	}
-
+	status = true;
 	return status;
 }
 
-void CFMRadioDevice::InitializeStream()
-{
-	if (!primaryRadio) return;
-
-	waveInStart(m_FMRadioAudioHandle);
-
-	//Reset block status to "empty" the buffer (simply starting over and refilling)
-	m_CurrentBlock = 0;
-	m_FreeBlock = 0;
-	gWaveFreeBlockCount = BLOCK_COUNT;
-
-	//Fill the audio buffer to initialize the stream
-	while (gWaveFreeBlockCount > (BLOCK_COUNT - BUFFER_PADDING))
-	{
-		StreamAudioIn();
-		StreamAudio();
-		Sleep(20);
-	}
-
-	//Skip the first chunk (at least half) of the padded buffer to eliminate any audio glitches
-	if (BUFFER_PADDING > 10)
-	{
-		m_CurrentBlock = 5;
-		gWaveFreeBlockCount = 5;
-	}
-
-	//Set streaming to true
-	m_Streaming = true;
-}
-
-void CFMRadioDevice::StreamAudio()
-{
-	//If our timer thread is being stopped, then don't do this
-	if (!m_StreamingAllowed) {
-		return;
-	}
-
-	//Check that the handles arent NULL
-	if ((m_FMRadioAudioHandle) && (m_SoundCardHandle))
-	{
-		//If there are any free blocks, then stream audio in.
-		if (gWaveFreeBlockCount) {
-			StreamAudioIn();
-		}
-
-		//If there are any blocks ready for output, then stream audio out
-		if (gWaveFreeBlockCount < BLOCK_COUNT) {
-			StreamAudioOut();
-		}
-	}
-}
-
-bool CFMRadioDevice::IsStreaming()
-{
-	return m_Streaming;
-}
-
-bool CFMRadioDevice::StreamAudioIn()
-{
-	bool status = false;
-
-	//Unprepare header to begin preperation process
-	waveInUnprepareHeader(m_FMRadioAudioHandle, &m_OutputHeader[m_FreeBlock], sizeof(m_OutputHeader[m_FreeBlock]));
-
-	//Prepare the header for streaming in
-	if (waveInPrepareHeader(m_FMRadioAudioHandle, &m_OutputHeader[m_FreeBlock], sizeof(m_OutputHeader[m_FreeBlock])) == MMSYSERR_NOERROR)
-	{
-		//Get the buffer of audio in the input header
-		if (waveInAddBuffer(m_FMRadioAudioHandle, &m_OutputHeader[m_FreeBlock], sizeof(m_OutputHeader[m_FreeBlock])) == MMSYSERR_NOERROR)
-		{				
-			//Enter the critical section to decrement the free block count
-			EnterCriticalSection(&gWaveCriticalSection);
-			gWaveFreeBlockCount--;
-			LeaveCriticalSection(&gWaveCriticalSection);
-
-			//Increment the free block index, and scale it
-			m_FreeBlock++;
-			m_FreeBlock %= BLOCK_COUNT;
-
-			status = true;
-		}
-	}
-
-	return status;
-}
-
-static void CALLBACK waveOutProc(HWAVEOUT hwo, UINT uMsg, DWORD dwInstance, DWORD dwParam1, DWORD dwParam2)
-{
-	//If a WaveOut Done message comes back, then enter the critical section to
-	//increment the free block counter
-	if (uMsg == WOM_DONE)
-	{
-		EnterCriticalSection(&gWaveCriticalSection);
-		int* freeBlockCounter = (int*)dwInstance;
-		(*freeBlockCounter)++;
-		LeaveCriticalSection(&gWaveCriticalSection);
-	}
-}
-
-bool CFMRadioDevice::StreamAudioOut()
-{
-	bool status = false;
-
-	//Unprepare header to begin preparation to stream out
-	waveOutUnprepareHeader(m_SoundCardHandle, &m_OutputHeader[m_CurrentBlock], sizeof(WAVEHDR));
-
-	//Prepare the header for streaming out
-	if (waveOutPrepareHeader(m_SoundCardHandle, &m_OutputHeader[m_CurrentBlock], sizeof(WAVEHDR)) == MMSYSERR_NOERROR)
-	{
-		if (m_AudioAllowed)
-			status = (waveOutWrite(m_SoundCardHandle, &m_OutputHeader[m_CurrentBlock], sizeof(WAVEHDR)) == MMSYSERR_NOERROR);
-		else
-			status = true;
-
-		//Write the sound to the sound card
-		if (status)
-		{
-			//waveOutProc callback function will get called, and free block counter gets incremented
-			if (!m_AudioAllowed)
-				if (gWaveFreeBlockCount < BLOCK_COUNT) waveOutProc(0, WOM_DONE, (DWORD)&gWaveFreeBlockCount, 0, 0);
-
-			//Increment the index of the current block to be played
-			m_CurrentBlock++;
-			m_CurrentBlock %= BLOCK_COUNT;
-
-			status = true;
-		}
-	}
-
-	return status;
-}
-
-BYTE CFMRadioDevice::GetWaveOutVolume()
-{
-	DWORD level = VOLUME_MIN;
-
-	//This gets the current wave output volume
-	waveOutGetVolume(m_SoundCardHandle, &level);
-
-	//This determines the level of one channel
-	level = level & 0xFFFF;
-
-	//If the level is above 0, then calculate it's percentage (0-100%)
-	if (level)	
-		level = (DWORD)((double)(level / (double)0xFFFF) * 100.0);
-
-	//Return the percentage level of volume
-	return (BYTE)(level & 0xFF);
-}
-
-bool CFMRadioDevice::SetWaveOutVolume(BYTE level)
-{
-	bool status = false;
-	DWORD setLevel = 0x00000000;
-
-	//Don't set the volume to anything greater than the max level
-	if (level > VOLUME_MAX)
-		level = VOLUME_MAX;
-
-	//Calculate a value based on the percentage input of one channel
-	if (level)
-		setLevel = (DWORD)(((double)level / 100.0) * (double)0xFFFF);
-
-	//Set the volume for L and R channels
-	setLevel = (setLevel << 16) | setLevel;
-
-	//Set the volume
-	if (waveOutSetVolume(m_SoundCardHandle, setLevel) == MMSYSERR_NOERROR)
-		status = true;
-
-	return status;
-}
 
 bool CFMRadioDevice::CloseFMRadioAudio()
 {
 	bool status = false;
+	g_pMediaControl->Stop();
 
-	//Stop the input from the device
-	waveInStop(m_FMRadioAudioHandle);
-
-	//Reset the device
-	waveInReset(m_FMRadioAudioHandle);
-
-	//Close the device
-	waveInClose(m_FMRadioAudioHandle);
-
-	//Reset handles and variables
-	m_FMRadioAudioHandle = NULL;
-	m_CurrentBlock = 0;
-	m_FreeBlock = 0;
-	gWaveFreeBlockCount = BLOCK_COUNT;
-	m_Streaming = false;
 	status = true;
-
 	return status;
 }
 
@@ -779,48 +612,10 @@ bool CFMRadioDevice::CloseSoundCard()
 {
 	bool status = false;
 
-	//Reset the device
-	waveOutReset(m_SoundCardHandle);
-
-	//Close the device
-	waveOutClose(m_SoundCardHandle);
-
-	//Reset the handle
-	m_SoundCardHandle = NULL;
 	status = true;
-
 	return status;
 }
 
-WAVEHDR* CFMRadioDevice::AllocateBlocks(int size, int count)
-{
-	char* buffer;
-	WAVEHDR* blocks = NULL;
-	DWORD totalBufferSize = (size + sizeof(WAVEHDR)) * count;
-
-	//Allocate zero initialized memory the size of our total buffer
-	if (buffer = (char*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, totalBufferSize))
-	{
-		blocks = (WAVEHDR*)buffer;
-		buffer += sizeof(WAVEHDR) * count;
-
-		//Fill the headers out based on our allocated space
-		for (int i = 0; i < count; i++)
-		{
-			blocks[i].dwBufferLength = size;
-			blocks[i].lpData = buffer;
-			buffer += size;
-		}
-	}
-
-	return blocks;
-}
-
-void CFMRadioDevice::FreeBlocks(WAVEHDR* blockArray)
-{
-	//Free the heap memory from the pointer provided
-	HeapFree(GetProcessHeap(), 0, blockArray);
-}
 
 bool CFMRadioDevice::OpenFMRadioData()
 {
@@ -1120,11 +915,13 @@ bool CFMRadioDevice::Mute(bool mute)
 	if (mute)
 	{
 		m_AudioAllowed = false;
-		waveOutReset(m_SoundCardHandle);
+		g_pMediaControl->Pause();
+
 	}
 	else
 	{
 		m_AudioAllowed = true;
+		g_pMediaControl->Run();
 	}
 
 	return true;
@@ -1612,6 +1409,8 @@ bool CFMRadioDevice::ReadAllRegisters(FMRADIO_REGISTER *registers)
 bool CFMRadioDevice::ChangeLED(BYTE ledState)
 {
 	bool status = false;
+
+	return true; // do nothing
 
 	//Set the LED report with the state of the LED
 	BYTE ledReport[LED_REPORT_SIZE] = {LED_COMMAND, ledState, 0xFF};

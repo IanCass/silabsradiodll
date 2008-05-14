@@ -6,10 +6,74 @@
 #include "FMRadioDevice.h"
 #include <time.h>
 
-
 static CFMRadioDevice fmRadioDevice(true);
-
+static CFMRadioDevice fmRadioDevice2(false);
 static RadioData radioData;
+bool shouldQuit = false;
+
+HANDLE h_afTimer;
+
+/**
+* Thread to Poll the primary radio device & see if it
+* needs switching frequency
+*/
+DWORD WINAPI AFThread( LPVOID lpParam )
+{
+	RDSData afData;
+	RDSData afData2;
+	char c[265];
+	int loopTime = 10000;
+
+	while(!shouldQuit) {
+		int seconds = time(NULL);
+		OutputDebugString("Start AF Sweep...\n");
+		fmRadioDevice.GetRDSData(&afData);
+
+		OutputDebugString("Got RDS Data\n");
+		int cf = fmRadioDevice.CurrFreq;
+
+		// tune each AF station to check if the signal is
+		// better than current
+		if (afData.AFMap.size() > 0) {
+	
+			std::map<float, float>::iterator iter; // our i for looping
+			for(iter = afData.AFMap.begin(); iter != afData.AFMap.end(); iter++) {
+				double freq = iter->first;
+
+				// tune to our candidate freq
+				fmRadioDevice2.DoTune(freq);
+
+				// Let the station settle
+				//Sleep(1000);
+
+				// Update teh stats
+				// repeat lots of times in case we have crud
+				for (int i = 0; i < 50; i++) {
+					fmRadioDevice2.updateRDSData();
+				}
+
+				// get signal strength
+				fmRadioDevice2.GetRDSData(&afData2);
+
+				sprintf(c, "AF Freq = %.2f, signal strength = %d, stereo = %d\n", freq, afData2.recievedSignalStrength, afData2.isStereo);
+				OutputDebugString(c);
+				
+				if (shouldQuit) break;
+				if (cf != fmRadioDevice.CurrFreq) {
+					OutputDebugString("Aborting AF Sweep = channel changed...\n");
+					break;
+				}
+			}
+		}
+		OutputDebugString("End AF Sweep...\n");
+
+
+		Sleep(loopTime - (time(NULL) - seconds));
+	}
+
+	// Got here, then we've been requested to quit (Shouldquit=true)
+	return 0;
+}
 
 
 BOOL APIENTRY DllMain( HANDLE hModule, 
@@ -17,6 +81,7 @@ BOOL APIENTRY DllMain( HANDLE hModule,
                        LPVOID lpReserved
 					 )
 {
+
     switch (ul_reason_for_call)
 	{
 		case DLL_PROCESS_ATTACH:
@@ -33,7 +98,7 @@ bool
 OpenFMRadio (CFMRadioDevice* fmDevice)
 {
 	if (fmDevice->OpenFMRadio(&radioData) == STATUS_OK ) {
-			fmDevice->InitializeStream();
+			//fmDevice->InitializeStream();
 			fmDevice->CreateRadioTimer();
 	}
 
@@ -102,7 +167,13 @@ GetModuleInfo ()
 USBRADIO_API bool __stdcall
 HWInit ()
 {
+
 	bool ret = OpenFMRadio(&fmRadioDevice);
+	//ret = OpenFMRadio(&fmRadioDevice2);
+
+	//h_afTimer = CreateThread(NULL, 0, AFThread, NULL, 0, NULL); 
+	//SetThreadPriority(h_afTimer, THREAD_PRIORITY_LOWEST);
+
 	return (ret);
 }
 
@@ -110,6 +181,14 @@ USBRADIO_API bool __stdcall
 HWDeInit ()
 {
 	CloseFMRadio(&fmRadioDevice);
+	CloseFMRadio(&fmRadioDevice2);
+
+	// Quit Threads
+	shouldQuit = true;
+	Sleep (200);
+
+	// Set they've been terminated
+	h_afTimer = NULL;
 
 	return true;
 
@@ -170,13 +249,14 @@ IsStereo ()
 USBRADIO_API unsigned int __stdcall
 GetVolume ()
 {
-	return (fmRadioDevice.GetWaveOutVolume());
+	//return (fmRadioDevice.GetWaveOutVolume());
+	return 0;
 }
 
 USBRADIO_API void __stdcall
 SetVolume (unsigned int left, unsigned int right)
 {
-	fmRadioDevice.SetWaveOutVolume(left);
+	//fmRadioDevice.SetWaveOutVolume(left);
 }
 
 USBRADIO_API void __stdcall
