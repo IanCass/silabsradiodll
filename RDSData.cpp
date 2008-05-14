@@ -60,7 +60,7 @@ void CRDSData::InitRDS()
 	m_RdsIndicator     = 0;
 	m_RdsBlocksValid   = 0;
 	m_RdsBlocksTotal   = 0;
-	ta_validate_count = 0;
+	//ta_validate_count = 0;
 
 	// Clear RDS Fifo
 	m_RdsFifoEmpty = 1;
@@ -100,7 +100,16 @@ void CRDSData::InitRDS()
 
 	// Clear down AF
 	AFMap.clear();
+	// Clear down EON
+	//EONPIMap.clear();
+	mEON_TrafficPI = 0;
+	//m_EONTACnt.empty();
+	mEON_TrafficStart = 0;
+	mEON_TrafficEnd = 0;
 
+	m_TrafficAlert = 0;
+	m_TrafficComplete = 0;
+	
 	// Check to see if we were playing a TA
 	// If so, signal that it's no longer playing
 	if (TANowPlaying) {
@@ -122,7 +131,11 @@ void CRDSData::UpdateRDSText(WORD* registers)
 	BYTE errorCount;
 	BYTE errorFlags;
 	bool abflag;
-
+	BYTE VariantCode = 0;
+	WORD Eon_PI = 0;
+	std::multimap<WORD, float>::iterator iter;
+	WORD i, FreqCount;
+	
 	// Check errors
 	errorCount = (registers[STATUSRSSI] & 0x0E00) >> 9;
 	errorFlags = registers[SYSCONFIG3] & 0xFF;
@@ -169,13 +182,28 @@ void CRDSData::UpdateRDSText(WORD* registers)
 	update_pty((registers[RDSB]>>5) & 0x1f); 
 
 	char szString[8];
-	char op[30];
+	char op[100];
 	BYTE AF;
 
 	// check for traffic announcement program on this station
-	if (m_ta && m_tp) {
-		// We have a traffic announcement being played  now
+	if (m_ta && m_tp) 
+	{// We have a traffic announcement being played  now
+		//increment count, decremented 50 per sec in FMRadioDevice
+		long NewVal = m_TrafficAlert + 35;
+		if(NewVal > 150)
+			NewVal = 150;
+		InterlockedExchange(&m_TrafficAlert, NewVal);
+	}
+	if (!m_ta || !m_tp) 
+	{// We have a traffic announcement being played  now
+		//increment count, decremented 50 per sec in FMRadioDevice
+		long NewVal = m_TrafficComplete + 35;
+		if(NewVal > 150)
+			NewVal = 150;
+		InterlockedExchange(&m_TrafficComplete, NewVal);
+	}
 
+/*
 		// Lets delay signalling until we're sure it's not spurious
 		if (ta_validate_count > TA_VALIDATE_LIMIT) {
 			// We're now sure it's a genuine TA
@@ -203,7 +231,7 @@ void CRDSData::UpdateRDSText(WORD* registers)
 			TANowPlaying = false;
 		}
 		ta_validate_count = 0;
-	} 
+	} */
 
 #ifdef DOLOG
 	switch (group_type) {
@@ -316,49 +344,54 @@ void CRDSData::UpdateRDSText(WORD* registers)
 	switch (group_type) {
 		// 0A, Basic tuning and switching info
 		case RDS_TYPE_0A:
-			addr = (registers[RDSB]&0x3)*2;
-			m_ms = ((registers[RDSB] & 0x08) == 0x08)?true:false;
-			m_ta = ((registers[RDSB] & 0x10) == 0x10)?true:false;
-			m_tp = ((registers[RDSB] & 0x400) == 0x400)?true:false;
+			if(registers[RDSA] == m_piDisplay)
+			{ //only process if PI matches - prevent corrupt chars getting through
+				m_ms = ((registers[RDSB] & 0x08) == 0x08)?true:false;
+				m_ta = ((registers[RDSB] & 0x10) == 0x10)?true:false;
+				m_tp = ((registers[RDSB] & 0x400) == 0x400)?true:false;
 
-			// 1st AF byte
-			AF = (registers[RDSC] >> 8) & 0xff;
-			if (AF > 0 && AF < 205) {
-				double freq = ConvertAFFrequency(AF);
-				//sprintf(op, "\nAF FREQ = %.1f mhz - ", freq);
-				//OutputDebugString(op);
-				//AFMap.insert(std::pair<double, double>(freq, freq));
-				AFMap[freq] = freq;
+				// 1st AF byte
+				AF = (registers[RDSC] >> 8) & 0xff;
+				if (AF > 0 && AF < 205) {
+					double freq = ConvertAFFrequency(AF);
+					//sprintf(op, "\nAF FREQ = %.1f mhz - ", freq);
+					//OutputDebugString(op);
+					//AFMap.insert(std::pair<double, double>(freq, freq));
+					AFMap[freq] = freq;
+				}
+		
+				// 2nd AF byte
+				AF = registers[RDSC] & 0xff;
+				if (AF > 0 && AF < 205) {
+					double freq = ConvertAFFrequency(AF);
+					//sprintf(op, "AF FREQ = %.1f mhz\n", freq);
+					//OutputDebugString(op);
+					//AFMap.insert(std::pair<double, double>(freq, freq));
+					AFMap[freq] = freq;
+				} 
 			}
-
-			// 2nd AF byte
-			AF = registers[RDSC] & 0xff;
-			if (AF > 0 && AF < 205) {
-				double freq = ConvertAFFrequency(AF);
-				//sprintf(op, "AF FREQ = %.1f mhz\n", freq);
-				//OutputDebugString(op);
-				//AFMap.insert(std::pair<double, double>(freq, freq));
-				AFMap[freq] = freq;
-			} 
-
+	
 			//sprintf(op, "AF = %d\n", AFMap.size());
 			//OutputDebugString (op);
 			//OutputDebugString("---");
 			// */
-
+			addr = (registers[RDSB]&0x3)*2;
 			update_ps(addr+0, registers[RDSD] >> 8  );
 			update_ps(addr+1, registers[RDSD] & 0xff);
 			break;
 
 			// 0B, Basic tuning and switching info
 		case RDS_TYPE_0B:
-			update_pi(registers[RDSC]);
 			addr = (registers[RDSB]&0x3)*2;
-			m_ms = (registers[RDSB] & 0x08 == 0x08)?true:false;
-			m_ta = (registers[RDSB] & 0x10 == 0x10)?true:false;
-			m_tp = (registers[RDSB] & 0x400 == 0x400)?true:false;
 			update_ps(addr+0, registers[RDSD] >> 8  );
 			update_ps(addr+1, registers[RDSD] & 0xff);
+			update_pi(registers[RDSC]);
+			if(registers[RDSA] == m_piDisplay)
+			{ //only process if PI matches - prevent corrupt chars getting through
+				m_ms = (registers[RDSB] & 0x08 == 0x08)?true:false;
+				m_ta = (registers[RDSB] & 0x10 == 0x10)?true:false;
+				m_tp = (registers[RDSB] & 0x400 == 0x400)?true:false;
+			}
 			break;
 
 			// 1A, Program Item Number and Slow Labelling Codes
@@ -434,8 +467,73 @@ void CRDSData::UpdateRDSText(WORD* registers)
 			// 14A, Enhanced Other Networks
 		case RDS_TYPE_14A:
 			//m_tp = (registers[RDSB] & 0x400 == 0x400)?true:false;
+			/* //slow and not that effective, don't use
+			VariantCode = (registers[RDSB] & 0x0f);
+			if(  (VariantCode >= 5) && (VariantCode <= 9))
+			{
+				//EON mapped freq
+				Eon_PI = registers[RDSD];
+				AF = registers[RDSC] & 0xff; 
+				if (AF > 0 && AF < 205) 
+				{
+					double EONfreq = ConvertAFFrequency(AF);
+					if(FreqCount=EONPIMap.count(Eon_PI))
+					{ //key already exists so check for frequency
+						iter = EONPIMap.find(Eon_PI);
+						for(i=0;i<FreqCount;i++)
+						{
+							if(iter->second == EONfreq)
+								break;
+							iter++;
+						}
+						if(i==FreqCount)
+						{//not found so add
+							EONPIMap.insert(EONPI_Pair(Eon_PI, EONfreq));
+							sprintf(op, "EON PI = %d, EON Freq = %f\n", Eon_PI, EONfreq);
+							OutputDebugString (op);
+						}
+					}
+					else
+					{ //key not found so add
+						EONPIMap.insert(EONPI_Pair(Eon_PI, EONfreq));
+						sprintf(op, "EON PI = %d, EON Freq = %.2f\n", Eon_PI, EONfreq);
+						OutputDebugString (op);
+					}
+				}
+			}*/
 			break;
-
+			// 14B, EON
+		case RDS_TYPE_14B:
+			sprintf(op, "EON PI = %d, Flags = 0x%04x\n", registers[RDSD], registers[RDSB]);
+			OutputDebugString (op);
+				
+			if((registers[RDSB] & 0x08) == 0x08)
+			{//EON TA start
+				if(mEON_TrafficPI == registers[RDSD])
+				{
+					long NewVal = mEON_TrafficStart + 50;
+					InterlockedExchange(&mEON_TrafficStart, NewVal);
+				}
+				else
+				{
+					mEON_TrafficPI = registers[RDSD];
+					mEON_TrafficStart=0;
+				}
+			}
+			else
+			{//EON TA end
+				if(mEON_TrafficPI == registers[RDSD])
+				{
+					long NewVal = mEON_TrafficEnd + 50;
+					InterlockedExchange(&mEON_TrafficEnd, NewVal);
+				}
+				else
+				{
+					mEON_TrafficPI = registers[RDSD];
+					mEON_TrafficEnd=0;
+				}
+			}
+			break;
 			// 15B, Fast Basic Tuning
 		case RDS_TYPE_15B:
 			//m_tp = (registers[RDSB] & 0x400 == 0x400)?true:false;
@@ -447,12 +545,64 @@ void CRDSData::UpdateRDSText(WORD* registers)
 	}
 }
 
+bool CRDSData::Send_TA_Start(void)
+{
+	bool Status = false;
+	if (!TANowPlaying) 
+	{
+		if (!TACallbackStartCommand.empty() && !TACallbackStartWindowName.empty() != NULL && TACallbackStartDwData) 
+		{
+			SendToXPort((char *)TACallbackStartWindowName.c_str(), TACallbackStartDwData, (char*)TACallbackStartCommand.c_str(), TACallbackStartCommand.length());
+			if(!RTCallbackCommand.empty() && !RTCallbackWindowName.empty() != NULL && RTCallbackDwData)
+			{
+				Sleep(20);
+				std::string rt;
+				rt.append(RTCallbackCommand);
+				rt.append("=");
+				rt.append("Traffic Information");
+				SendToXPort((char *)RTCallbackWindowName.c_str(), RTCallbackDwData, (char*)rt.c_str(), rt.length());
+			}
+			Status = true;
+		}
+		TANowPlaying = true;
+	}
+	return Status;
+}
+
+
+bool CRDSData::Send_TA_Stop(void)
+{
+	bool Status = false;
+	if (TANowPlaying) 
+	{
+		if (!TACallbackStopCommand.empty() && !TACallbackStopWindowName.empty() != NULL && TACallbackStopDwData) 
+		{
+			SendToXPort((char *)TACallbackStopWindowName.c_str(), TACallbackStopDwData, (char*)TACallbackStopCommand.c_str(), TACallbackStopCommand.length());
+			if(!RTCallbackCommand.empty() && !RTCallbackWindowName.empty() != NULL && RTCallbackDwData)
+			{
+				Sleep(20);
+				std::string rt;
+				rt.append(RTCallbackCommand);
+				rt.append("=");
+				rt.append("");
+				SendToXPort((char *)RTCallbackWindowName.c_str(), RTCallbackDwData, (char*)rt.c_str(), rt.length());
+			}
+			Status = true;
+		}
+		// switch the indicator off
+		TANowPlaying = false;
+	}
+	return Status;
+}
+
 float CRDSData::ConvertAFFrequency(BYTE freq)
 {
 	float basefreq = 87.5;
 	float offset = (int)freq / 10.0;
 	return basefreq + offset;
 }
+
+
 
 void CRDSData::LogRDSDataStream(WORD* registers)
 {
@@ -1015,22 +1165,21 @@ void CRDSData::display_rt()
 			m_rtTmp1[i]    = 0;
 		}
 
-		std::string rt;
-		rt.append(RTCallbackCommand);
-		rt.append("=");
-		rt.append(m_RDSText);
-
-		// Alert if we need to
-		if (!RTCallbackCommand.empty() && !RTCallbackWindowName.empty() != NULL && RTCallbackDwData) {
-			SendToXPort((char *)RTCallbackWindowName.c_str(), RTCallbackDwData, (char*)rt.c_str(), rt.length());
-		}
-
-
 		//std::map<WORD, std::string>::iterator it = m_textTable.find(m_piDisplay);
 		//if( it != m_textTable.end() ) {
 		//      m_textTable.erase(it);
 		//}
 		//m_textTable.insert(std::pair<WORD, std::string>(m_piDisplay, m_RDSText));
+	}
+
+	if(!TANowPlaying && rtComplete && !RTCallbackCommand.empty() && !RTCallbackWindowName.empty() != NULL && RTCallbackDwData)
+	{
+		std::string rt;
+		rt.append(RTCallbackCommand);
+		rt.append("=");
+		rt.append(m_RDSText);
+		
+		SendToXPort((char *)RTCallbackWindowName.c_str(), RTCallbackDwData, (char*)rt.c_str(), rt.length());
 	}
 }
 
