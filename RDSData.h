@@ -28,6 +28,9 @@ typedef struct rdsFifo_struct_tag {
 } rdsFifo_struct;
 
 typedef std::map<float, float> tAFMap;
+//typedef std::pair<WORD, float> EONPI_Pair;
+//typedef std::multimap<WORD, float> tEONPIMap;
+
 
 #define RDS_TYPE_0A     ( 0 * 2 + 0)
 #define RDS_TYPE_0B     ( 0 * 2 + 1)
@@ -90,7 +93,7 @@ class CRDSData
 	BYTE m_RdsFifoEmpty;
 	rdsFifo_struct	m_RdsFifo[RDS_FIFO_SIZE];
 	int validation_limit;
-	int ta_validate_count;
+	//int ta_validate_count;
 	
 	// RDS Radio Text
     BYTE m_rtDisplay[64];   // Displayed Radio Text
@@ -102,7 +105,7 @@ class CRDSData
 	bool m_OldabFlag;
 	BYTE m_rtFlagValid;     // Radio Text A/B flag is valid
 	bool m_rtTog;
-
+	
 	// RDS Program Service
 	BYTE m_psDisplay[8];    // Displayed Program Service text
 	BYTE m_psTmp0[8];       // Temporary PS text (high probability)
@@ -142,6 +145,11 @@ public:
 
 	void UpdateRDSText(WORD* registers);
 	void ResetRDSText();
+	bool Send_TA_Start(void);
+	bool Send_TA_Stop(void);
+	bool Send_News_Start(void);
+	bool Send_News_Stop(void);
+	WORD GetmEONNewsPI(bool Clear);
 	std::string m_RDSText;
 	std::string m_RDSPS;
 	
@@ -156,7 +164,16 @@ public:
 	bool m_tp;
 	bool m_ta;
 	bool m_ms;
+	int m_EON;
 	tAFMap AFMap;				// Alternate Frequencies
+	//tEONPIMap EONPIMap;			//EON PI lookup
+	WORD mEON_TrafficPI;
+	long mEON_NewsPI;
+	//std::map <WORD, int> m_EONTACnt;
+	long mEON_TrafficStart;
+	long mEON_TrafficEnd;
+	long m_TrafficAlert;
+	long m_TrafficComplete;
 
 	std::string TACallbackStartCommand;
 	short TACallbackStartDwData;
@@ -166,12 +183,21 @@ public:
 	short TACallbackStopDwData;
 	std::string TACallbackStopWindowName;
 
+	std::string NewsCallbackStartCommand;
+	short NewsCallbackStartDwData;
+	std::string NewsCallbackStartWindowName;
+
+	std::string NewsCallbackStopCommand;
+	short NewsCallbackStopDwData;
+	std::string NewsCallbackStopWindowName;
+
 	std::string RTCallbackWindowName;
 	short RTCallbackDwData;
 	std::string RTCallbackCommand;
 
 
 	bool TANowPlaying;
+	bool NewsNowPlaying;
 
 };
 

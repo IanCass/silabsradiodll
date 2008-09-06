@@ -14,6 +14,8 @@
 typedef GUID *LPGUID;
 
 #include <windows.h>
+#include <streams.h>
+
 
 //ULONG/DWORD pointer types defined for DDK if not already
 #ifndef ULONG_PTR
@@ -232,19 +234,27 @@ typedef BYTE	SCRATCH_PAGE[SCRATCH_PAGE_SIZE];
 
 //Number of presets definition
 #define PRESET_NUM	12
+//Number of PI definition
+#define PI_NUM	30
+#define FLASH_PI_NUM	12
 
 //Global variables for the critical section and 
 //free block count, used by callback functions
 static CRITICAL_SECTION gWaveCriticalSection;
 static volatile BYTE gWaveFreeBlockCount;
 
-//Global callback function for when wave out terminates
-static void CALLBACK waveOutProc(HWAVEOUT hwo, UINT uMsg, DWORD dwInstance, DWORD dwParam1, DWORD dwParam2);
+// convenient macro for releasing interfaces
+#define HELPER_RELEASE(x)   if (x != NULL) \
+                            { \
+                                x->Release(); \
+                                x = NULL; \
+                            }
 
 //Structure that contains all useful data about the radio - filled from the scratch page
 typedef struct RadioData
 {
 	bool firstRun;
+	bool enableDirectShow;
 	BYTE swVersion;
 	BYTE hwVersion;
 	BYTE partNumber;
@@ -254,6 +264,9 @@ typedef struct RadioData
 	BYTE firmwareVersion;
 	double currentStation;
 	double preset[PRESET_NUM];
+	WORD PI[PI_NUM];
+	WORD EonPI;
+	double PI_Freq[PI_NUM];
 	BYTE seekThreshold;
 	BYTE band;
 	BYTE spacing;
@@ -268,6 +281,8 @@ typedef struct RadioData
 } RadioData;
 
 typedef std::map<float, float> tAFMap;
+//typedef std::pair<WORD, float> EONPI_Pair;
+//typedef std::multimap<WORD, float> tEONPIMap;
 
 // This is also added to the header for the DLL, protect from multiple inclusions
 #ifndef _RDSDATA_
@@ -284,8 +299,11 @@ typedef struct RDSData
 	bool rdsTA;
 	bool rdsTP;
 	bool rdsMS;
+	bool rdsEON;
 	std::string rdsPTYString;
 	tAFMap AFMap;
+	//tEONPIMap EONPIMap;	
+	WORD mEON_TrafficPI;
 	std::string rdsPICountry;
 	std::string rdsPIRegion;
 
@@ -308,7 +326,7 @@ typedef struct RDSData
 #define DATA_DEEMPHASIS_50		0x02
 
 #define DATA_MONOSTEREO			0x10
-#define DATA_MONOSTEREO_STEREO	0x01
+#define DATA_MONOSTEREO_STEREO	0x00
 #define DATA_MONOSTEREO_MONO	0x10
 
 #define DATA_ALWAYSONTOP		0x80
@@ -328,6 +346,11 @@ class CFMRadioDevice
 public:
 	CFMRadioDevice(bool primary);
 	virtual ~CFMRadioDevice();
+
+private:
+	HRESULT CFMRadioDevice::LoadGraphFile(IGraphBuilder *pGraph, const WCHAR* wszName);
+	HRESULT CFMRadioDevice::SaveGraphFile(IGraphBuilder *pGraph, WCHAR *wszPath);
+	int CFMRadioDevice::InitDirectShow();
 
 //////////////////////
 //General Functionality
@@ -354,11 +377,19 @@ public:
 	bool	Mute(bool mute);
 	bool	Tune(bool tuneUp);
 	bool	Tune(double frequency);
+	bool	PITune(double frequency, int targetPI, double PIFrequency);
 	bool	DoTune(double frequency);
+	bool	DoQuickTune(double frequency);
 	bool	Seek(bool seekUp);
+	bool	QuickSeek(bool seekUp);
 	bool	GetRDSData(RDSData* radioData);
+	WORD	GetRDSPI(void);
+	BYTE	GetRDSPTY(void);
+	WORD	GetEONNewsPI(bool Clear);
 	bool	RTAStart (char windowName[256], short dwData, char lpData[256]);
 	bool	RTAStop (char windowName[256], short dwData, char lpData[256]);
+	bool	RNewsStart (char windowName[256], short dwData, char lpData[256]);
+	bool	RNewsStop (char windowName[256], short dwData, char lpData[256]);
 	bool	RRadioText (char windowName[256], short dwData, char lpData[256]);
 
 	//bool	updateRDSData(RDSData* radioData);
@@ -371,21 +402,24 @@ public:
 
 	bool	SetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer, DWORD dataBufferSize);
 	bool	GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer, DWORD dataBufferSize);
-	
 
+	bool CFMRadioDevice::Send_TA_Start(void) {return(m_RDS.Send_TA_Start());};
+	bool CFMRadioDevice::Send_TA_Stop(void) {return(m_RDS.Send_TA_Stop());};
+	bool CFMRadioDevice::Send_News_Start(void) {return(m_RDS.Send_News_Start());};
+	bool CFMRadioDevice::Send_News_Stop(void) {return(m_RDS.Send_News_Stop());};
+	
+	//bool	SetLED(BYTE ledState) {return(ChangeLED(ledState));};
 
 private:
 	bool	OpenFMRadioData();
-	int		GetAudioDeviceIndex();
 	bool	GetRadioData(RadioData* radioData);
 	bool	SetRadioData(RadioData* radioData);
 	bool	InitializeRadioData(RadioData* radioData);
 	bool	CloseFMRadioData();
 	RDSData lrdsData;
 
-	XYCriticalSection gRDSCriticalSection;
-	HANDLE gRDSMutex;
-
+	CRITICAL_SECTION m_RDSCriticalSection;
+	
 	HANDLE	m_FMRadioDataHandle;
 	HANDLE	m_FMRadioRDSHandle;
 
@@ -408,12 +442,31 @@ private:
 	bool		primaryRadio;
 	
 	double	CalculateStationFrequency(FMRADIO_REGISTER hexChannel);
+	double  CalculateStationFrequency(FMRADIO_REGISTER hexChannel, BYTE ScratchBand, BYTE ScratchSpacing);
 	WORD	CalculateStationFrequencyBits(double frequency);
 
 	bool	SetScratchReport(BYTE report, BYTE* dataBuffer, DWORD dataBufferSize);
 	bool	GetScratchReport(BYTE report, BYTE* dataBuffer, DWORD dataBufferSize);
 	bool	SetLEDReport(BYTE report, BYTE* dataBuffer, DWORD dataBufferSize);
 	bool	SetStreamReport(BYTE report, BYTE* dataBuffer, DWORD dataBufferSize);
+
+public:
+	bool	pubSetRadioData(RadioData* radioData)
+	{
+		if(m_FMRadioDataHandle)
+			return(SetRadioData(radioData));
+		else
+			return(false);
+	}
+
+	bool	pubGetRadioData(RadioData* radioData)
+	{
+		if(m_FMRadioDataHandle)
+			return(GetRadioData(radioData));
+		else
+			return(false);
+	}
+	
 
 ////////////////////////
 ////////////////////////
@@ -422,15 +475,10 @@ private:
 //USB Audio  Functionality
 
 public:
-	void	InitializeStream();
-	void	StreamAudio();
 	bool	IsStreaming();
 	bool	IsTuning();
 	BYTE	GetWaveOutVolume();
 	bool	SetWaveOutVolume(BYTE level);
-
-	int		GetLastKnownRadioIndex();
-	void	SetNewRadioIndex(int index);
 
 	bool CreateRadioTimer();
     bool DestroyRadioTimer();
@@ -445,21 +493,24 @@ private:
 public:	
 	int CurrFreq;	
 	int QueFreq;
+	int QuePI;
+	int BackupFreq;
 	bool PopOut;
+	bool	ChangeLED(BYTE ledState);
+
+	bool TunerFound;
+
+	bool m_EONTAStart;
+	bool m_EONTAStop;
+	WORD m_EONTAPIStart;
+	WORD m_EONTAPIStop;
+	bool m_TrafficStartFlag;
+	bool m_TrafficEndFlag;
+
+	int m_StereoCount;	
+	bool m_isStereo;
 
 private:
-
-	HWAVEIN		m_FMRadioAudioHandle;
-	HWAVEOUT	m_SoundCardHandle;
-
-	int			m_LastKnownRadioIndex;
-
-	WAVEFORMATEX	m_FMRadioWaveFormat;
-
-	WAVEHDR		m_InputHeader;
-	WAVEHDR*	m_OutputHeader;
-	char*		m_WaveformBuffer;
-		
 
 	bool		m_StreamingAllowed;
 	bool		m_AudioAllowed;
@@ -470,13 +521,22 @@ private:
 	
 	bool	StreamAudioIn();
 	bool	StreamAudioOut();
-	bool	ChangeLED(BYTE ledState);
 
-	WAVEHDR*	AllocateBlocks(int size, int count);
-	void		FreeBlocks(WAVEHDR*);
+	int     m_LastKnownRadioIndex;
+
+	IGraphBuilder*	g_pGraphBuilder;
+	ICaptureGraphBuilder2*  g_pCaptureGraphBuilder;
+	//CComPtr<IGraphBuilder> g_pGraphBuilder;
+
+	IMediaControl*	g_pMediaControl;
+	IMediaEventEx*	g_pMediaEvent;
+	IMediaPosition*	g_pMediaPosition;
+
+
 
 	HANDLE h_radioTimer;
 	HANDLE h_rdsTimer;
+
 
 ////////////////////////////
 ////////////////////////////

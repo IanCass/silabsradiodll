@@ -8,6 +8,9 @@
 #include <vector>
 #include "XYCriticalSection.h"
 #include "XYLock.h"
+#include <initguid.h>
+
+
 
 //////////// DEBUG ////////////
 //#define DOLOG
@@ -17,8 +20,12 @@ static std::ofstream outfile;
 #endif
 //////////////////////////////
 
-#define RADIO_TIMER_PERIOD 20	/* Call StreamAudio every RADIO_TIMER_PERIOD ms */
+#define RADIO_TIMER_PERIOD 50	/* Call StreamAudio every RADIO_TIMER_PERIOD ms */
 
+#define INITGUID	// have to define this so next line actually creates GUID structure
+DEFINE_GUID(CLSID_silabs, 
+			//0x36FC9E60, 0xC465, 0x11CF, 0x80, 0x56, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00);
+			0x65e8773d, 0x8f56, 0x11d0, 0xa3, 0xb9, 0x00, 0xa0, 0xc9, 0x22, 0x31, 0x96);
 
 static bool ShouldQuit;			/* Variable Outside Class for Direct Thread access */
 /* Variable Outside Class for Direct Thread access */
@@ -27,11 +34,13 @@ DWORD WINAPI RadioThread( LPVOID lpParam )
 {
 	int UnMuteCount = 0;
 	int OldVol = 0;
+	int PICheck = -1;
 
 	while(!ShouldQuit) {
 
 
 		// Pop Removal
+		/*
 		if(((CFMRadioDevice*)lpParam)->PopOut) {
 			if(!OldVol) {
 				OldVol = ((CFMRadioDevice*)lpParam)->GetWaveOutVolume();
@@ -43,13 +52,38 @@ DWORD WINAPI RadioThread( LPVOID lpParam )
 			UnMuteCount = 15;
 			((CFMRadioDevice*)lpParam)->PopOut = false;
 		}
-
+		*/
+		
 		//If new freq waiting to be tuned, do it
 		int cf = ((CFMRadioDevice*)lpParam)->CurrFreq;
 		int qf = ((CFMRadioDevice*)lpParam)->QueFreq;
-		if (qf != cf) ((CFMRadioDevice*)lpParam)->DoTune((double)qf/10.0);
+		int Backupqf = ((CFMRadioDevice*)lpParam)->BackupFreq;
+		int qPI = ((CFMRadioDevice*)lpParam)->QuePI;
+		if (qf != cf) 
+		{
+			((CFMRadioDevice*)lpParam)->DoTune((double)qf/10.0);
+			if(qPI > 0)
+				PICheck = 10;
+		}
+		
+		if(PICheck >= 0)
+		{
+			if(PICheck > 0)
+			{//check to see if PI validated
+				if(qPI == ((CFMRadioDevice*)lpParam)->GetRDSPI())
+				{
+					PICheck = -1;//station found so stop check
+				}
+			}
+			else
+			{//too late return to QueFreq
+				((CFMRadioDevice*)lpParam)->QueFreq = qf = Backupqf;
+			}
+			PICheck--;
+		}
 
 		// Restore mute status
+		/*
 		if(OldVol) {
 			if(!UnMuteCount--) {
 				if(((CFMRadioDevice*)lpParam)->ExFlags & FLAG_MUTESTREAM)
@@ -59,10 +93,9 @@ DWORD WINAPI RadioThread( LPVOID lpParam )
 				OldVol = 0;
 			}
 		}
+		*/
 
 
-		// Process Audio
-		((CFMRadioDevice*)lpParam)->StreamAudio();
 
 		// Wait next turn
 		Sleep (RADIO_TIMER_PERIOD);
@@ -100,20 +133,12 @@ CFMRadioDevice::CFMRadioDevice(bool primary)
 	outfile << "FM Log Started\n";
 #endif
 
-	//Initialize the critical section variable used for exclusivity
-	InitializeCriticalSection(&gWaveCriticalSection);
-	//InitializeCriticalSection(&gRDSCriticalSection);
-
-	//gRDSMutex = CreateMutex( 
-	//    NULL,              // default security attributes
-	//    FALSE,             // initially not owned
-	//    "RDS Mutex");      // Mutex name
+	//Initialise critical session
+	InitializeCriticalSection(&m_RDSCriticalSection);
 
 	//Make the handles NULL to begin with
-	m_FMRadioAudioHandle = NULL;
 	m_FMRadioDataHandle = NULL;
 	m_FMRadioRDSHandle = NULL;
-	m_SoundCardHandle = NULL;
 
 	//Set the input buffer pointers to NULL, and size to 0
 	m_pEndpoint0ReportBuffer = NULL;
@@ -123,6 +148,12 @@ CFMRadioDevice::CFMRadioDevice(bool primary)
 	m_Endpoint1ReportBufferSize = 0;
 	m_Endpoint2ReportBufferSize = 0;
 
+	// Initialize DirectShow interfaces explicitly
+	g_pGraphBuilder = NULL;
+	g_pMediaControl = NULL;
+	g_pMediaEvent = NULL;
+	g_pMediaPosition = NULL;
+
 	//The radio is not streaming or tuning initially
 	m_StreamingAllowed = false;
 	m_Streaming = false;
@@ -130,35 +161,11 @@ CFMRadioDevice::CFMRadioDevice(bool primary)
 	m_AudioAllowed = true;
 	primaryRadio = primary;
 
-	//Setup the wave format based on our defined audio data
-	m_FMRadioWaveFormat.wFormatTag = WAVE_FORMAT_PCM;
-	m_FMRadioWaveFormat.nSamplesPerSec = SAMPLES_PER_SECOND;
-	m_FMRadioWaveFormat.wBitsPerSample = BITS_PER_SAMPLE;
-	m_FMRadioWaveFormat.nChannels = CHANNELS;
-
-	// Opening the audio stream from a DLL requires this?
-	m_FMRadioWaveFormat.nBlockAlign= 0xcccc;
-	m_FMRadioWaveFormat.nAvgBytesPerSec = 0xcccccccc;
-	m_FMRadioWaveFormat.cbSize = 0xcccc;
+	//not found tuner for this instance yet
+	TunerFound = false;
 
 	//Set the last known radio index to negative since there hasnt been a radio attached yet
 	m_LastKnownRadioIndex = -1;
-
-	//The current block starts at zero, and all blocks are initially free
-	m_CurrentBlock = 0;
-	m_FreeBlock = 0;
-	gWaveFreeBlockCount = BLOCK_COUNT;
-
-	//Allocate memory for the blocks of audio data to stream
-	m_OutputHeader = AllocateBlocks(BLOCK_SIZE, BLOCK_COUNT);
-
-	m_WaveformBuffer = (char*)malloc(BLOCK_SIZE);
-	m_InputHeader.lpData = m_WaveformBuffer;
-	m_InputHeader.dwBufferLength = BLOCK_SIZE;
-	m_InputHeader.dwFlags = 0;
-
-	// Initialize our radio timer to NULL
-	h_radioTimer = NULL;
 
 	// Initialize the previous process priority to 0
 	m_previous_process_priority = 0;
@@ -170,6 +177,14 @@ CFMRadioDevice::CFMRadioDevice(bool primary)
 	m_OldRegister = 0;
 	m_RDSCleared = true;
 
+	m_EONTAStart = false;
+	m_EONTAStop = false;
+	m_EONTAPIStart = 0;
+	m_EONTAPIStop = 0;
+
+	m_TrafficEndFlag = false;
+	m_TrafficStartFlag = false;
+
 	//Advanced Options
 	ExFlags = FLAG_DEDUP;
 	PopOut = false;
@@ -178,13 +193,75 @@ CFMRadioDevice::CFMRadioDevice(bool primary)
 
 CFMRadioDevice::~CFMRadioDevice()
 {
-	//Free all allocated memory when destroyed
-	FreeBlocks(m_OutputHeader);
-	free(m_WaveformBuffer);
+	//HELPER_RELEASE(g_pMediaPosition);
+    //HELPER_RELEASE(g_pMediaEvent);
+    //HELPER_RELEASE(g_pMediaControl);
+    //HELPER_RELEASE(g_pGraphBuilder);
+
+
 }
+
+int CFMRadioDevice::InitDirectShow()
+{
+	HRESULT hr;
+
+	hr = CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER,
+	IID_IGraphBuilder,(void**)&g_pGraphBuilder);
+	
+	if (FAILED(hr))
+		return -1;
+	g_pGraphBuilder->QueryInterface(IID_IMediaControl, (void**)&g_pMediaControl);
+	g_pGraphBuilder->QueryInterface(IID_IMediaEvent, (void**)&g_pMediaEvent);
+	g_pGraphBuilder->QueryInterface(IID_IMediaPosition, (void**)g_pMediaPosition);
+	return 0;
+}
+
+/*
+* Load a predefined filter graph. This has to live in the same directory as
+* the dll & needs to be called "filter.grf"
+*
+*/
+HRESULT CFMRadioDevice::LoadGraphFile(IGraphBuilder *pGraph, const WCHAR* wszName)
+{
+    IStorage *pStorage = 0;
+    if (S_OK != StgIsStorageFile(wszName))
+    {
+        return E_FAIL;
+    }
+    HRESULT hr = StgOpenStorage(wszName, 0, 
+        STGM_TRANSACTED | STGM_READ | STGM_SHARE_DENY_WRITE, 
+        0, 0, &pStorage);
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+    IPersistStream *pPersistStream = 0;
+    hr = pGraph->QueryInterface(IID_IPersistStream,
+             reinterpret_cast<void**>(&pPersistStream));
+    if (SUCCEEDED(hr))
+    {
+        IStream *pStream = 0;
+        hr = pStorage->OpenStream(L"ActiveMovieGraph", 0, 
+            STGM_READ | STGM_SHARE_EXCLUSIVE, 0, &pStream);
+        if(SUCCEEDED(hr))
+        {
+            hr = pPersistStream->Load(pStream);
+            pStream->Release();
+        }
+        pPersistStream->Release();
+    }
+    pStorage->Release();
+    return hr;
+}
+
+
+
+
 
 BYTE CFMRadioDevice::OpenFMRadio(RadioData* radioData)
 {
+	//first make sure all closed - hibernation issue - I know this is a bodge but I'm running out of ideas!
+	CloseFMRadio();
 	//Check that radio data is not NULL
 	if (radioData == NULL) {
 		return (STATUS_ERROR);
@@ -206,19 +283,24 @@ BYTE CFMRadioDevice::OpenFMRadio(RadioData* radioData)
 	}
 
 	if (primaryRadio) {
-		//Open the FM Radio audio input
-		if (!OpenFMRadioAudio()) {
-			return (STATUS_FMRADIOAUDIO_ERROR);
-		}
-
-		//Open the sound card
-		if (!OpenSoundCard()) {
-			return (STATUS_OUTPUTAUDIO_ERROR);
-		}
-
 		//Tune to the current station
 		Tune(radioData->currentStation);
+
+		//Only initialize sound if DirectShow is enabled
+		if (radioData->enableDirectShow) {
+			//Open the FM Radio audio input
+			if (!OpenFMRadioAudio()) {
+				return (STATUS_FMRADIOAUDIO_ERROR);
+			}
+
+			//Open the sound card
+			if (!OpenSoundCard()) {
+				return (STATUS_OUTPUTAUDIO_ERROR);
+			}
+		}
 	}
+
+	TunerFound = true;
 
 	return (STATUS_OK);
 }
@@ -227,10 +309,15 @@ bool CFMRadioDevice::CloseFMRadio()
 {
 	bool status = false;
 
+	CurrFreq = 0; //need to do this to ensure retunes when comes out of hibernation
+
 	//Close all pipes
 	CloseFMRadioAudio();
 	CloseSoundCard();
+
 	CloseFMRadioData();
+
+	TunerFound = false;
 
 	status = true;
 
@@ -253,6 +340,22 @@ bool CFMRadioDevice::RTAStop (char windowName[256], short dwData, char lpData[25
 	return true;
 }
 
+bool CFMRadioDevice::RNewsStart (char windowName[256], short dwData, char lpData[256])
+{	
+	m_RDS.NewsCallbackStartWindowName = windowName;
+	m_RDS.NewsCallbackStartDwData = dwData;
+	m_RDS.NewsCallbackStartCommand = lpData;
+	return true;
+}
+
+bool CFMRadioDevice::RNewsStop (char windowName[256], short dwData, char lpData[256])
+{	
+	m_RDS.NewsCallbackStopWindowName = windowName;
+	m_RDS.NewsCallbackStopDwData = dwData;
+	m_RDS.NewsCallbackStopCommand = lpData;
+	return true;
+}
+
 bool CFMRadioDevice::RRadioText (char windowName[256], short dwData, char lpData[256])
 {	
 	m_RDS.RTCallbackWindowName = windowName;
@@ -261,31 +364,46 @@ bool CFMRadioDevice::RRadioText (char windowName[256], short dwData, char lpData
 	return true;
 }
 
+WORD CFMRadioDevice::GetRDSPI(void)
+{
+	return(m_RDS.m_piDisplay);
+}
+
+BYTE CFMRadioDevice::GetRDSPTY(void)
+{
+	return(m_RDS.m_ptyDisplay);
+}
+
+WORD CFMRadioDevice::GetEONNewsPI(bool Clear)
+{
+	return(m_RDS.GetmEONNewsPI(Clear));
+}
+
 bool CFMRadioDevice::GetRDSData(RDSData* rdsData) 
 {
-
+	static int StereoCount = 0;
 	DWORD dwWaitResult;
 
 	if (&rdsData) {
 
-		//XYLock myLock(&gRDSCriticalSection);
-
-		//EnterCriticalSection(&gRDSCriticalSection);
-		//dwWaitResult = WaitForSingleObject( 
-		//    gRDSMutex,    // handle to mutex
-		//    INFINITE);  // no time-out interval
-
+		while(TryEnterCriticalSection(&m_RDSCriticalSection)==0)
+			Sleep(10);
+		
 		//Store all the current RDS data in the rds Data structure
 		rdsData->currentStation = (double)QueFreq/10.0; // CalculateStationFrequency(m_Register[READCHAN] & READCHAN_READCHAN);
 		rdsData->recievedSignalStrength = m_Register[STATUSRSSI] & STATUSRSSI_RSSI;
 		//rdsData->currentStation = CalculateStationFrequency(m_Register[READCHAN] & READCHAN_READCHAN);
 
-		if(rdsData->recievedSignalStrength > 15) {
-			rdsData->isStereo = (((m_Register[STATUSRSSI] & STATUSRSSI_ST) >> 8) == DATA_MONOSTEREO_STEREO)||(m_RDS.m_ptyDisplay!=0)?true:false;
-		}
-		else 
-			rdsData->isStereo = (m_RDS.m_ptyDisplay!=0);
+		//if(rdsData->recievedSignalStrength > 15) 
+		//{
+			//rdsData->isStereo = (((m_Register[STATUSRSSI] & STATUSRSSI_ST) >> 8) == DATA_MONOSTEREO_STEREO)||(m_RDS.m_ptyDisplay!=0)?true:false;
+		//}
+		//else 
+		//	rdsData->isStereo = (m_RDS.m_ptyDisplay!=0);
 
+		//Stereo
+		rdsData->isStereo = m_isStereo;
+		
 		// Radio Text
 		if (rdsData->rdsText != m_RDS.m_RDSText) {
 			rdsData->rdsText = m_RDS.m_RDSText;
@@ -314,12 +432,18 @@ bool CFMRadioDevice::GetRDSData(RDSData* rdsData)
 		rdsData->rdsTA = m_RDS.m_ta;
 		rdsData->rdsTP = m_RDS.m_tp;
 		rdsData->rdsMS = m_RDS.m_ms;
-
+		if(m_RDS.m_EON > 0)
+			rdsData->rdsEON = true;
+		else
+			rdsData->rdsEON = false;
 		// AF
 		rdsData->AFMap = m_RDS.AFMap;
 
-		//LeaveCriticalSection(&gRDSCriticalSection);
-		//ReleaseMutex(gRDSMutex);
+		//EON
+		//rdsData->EONPIMap = m_RDS.EONPIMap;
+		rdsData->mEON_TrafficPI = m_RDS.mEON_TrafficPI;
+		
+		LeaveCriticalSection(&m_RDSCriticalSection);
 
 		return true;
 	} else {
@@ -333,18 +457,11 @@ void CFMRadioDevice::updateRDSData()
 	char op[20];
 	DWORD dwWaitResult;
 
-
-
-
 	//Call the update function and if it succeeds, fill the return structure with the current RDBS data
 	if (UpdateRDS())
 	{
-		//dwWaitResult = WaitForSingleObject( 
-		//	gRDSMutex,    // handle to mutex
-		//	INFINITE);  // no time-out interval
-		//EnterCriticalSection(&gRDSCriticalSection);
-		XYLock myLock(&gRDSCriticalSection);
-
+		while(TryEnterCriticalSection(&m_RDSCriticalSection)==0)
+			Sleep(10);
 
 		// Deduplicate
 		if(ExFlags & FLAG_DEDUP) { 
@@ -362,12 +479,105 @@ void CFMRadioDevice::updateRDSData()
 				m_RDS.UpdateRDSText(m_Register);
 			}
 		}
-		//ReleaseMutex(gRDSMutex);
-		//LeaveCriticalSection(&gRDSCriticalSection);
+		LeaveCriticalSection(&m_RDSCriticalSection);
 
 	}
 
+	if((m_Register[STATUSRSSI] & STATUSRSSI_ST)?true:false)
+		m_StereoCount++;
+	else
+		m_StereoCount--;
 
+	if(m_StereoCount > 10)
+	{
+		m_StereoCount = 10;
+		m_isStereo = true;
+	}
+	else if(m_StereoCount < 0)
+	{
+		m_StereoCount = 0;
+		m_isStereo = false;
+	}
+
+	char c[256];
+	//use USB interrupt rate to regulate this
+	if(m_RDS.mEON_TrafficStart)
+	{
+		InterlockedDecrement(&m_RDS.mEON_TrafficStart);
+		//sprintf(c, "EON StartCount = %d\n", m_RDS.mEON_TrafficStart);
+		//OutputDebugString (c);
+		if(m_RDS.mEON_TrafficStart > 100)
+		{
+			m_EONTAStart = true;
+			m_EONTAPIStart = m_RDS.mEON_TrafficPI;
+			//EON traffic start detected
+			//sprintf(c, "EON Start, PI = %d\n", m_RDS.mEON_TrafficPI);
+			//OutputDebugString (c);
+		}
+	}
+	else
+		m_EONTAStart = false;
+
+	if(m_RDS.mEON_TrafficEnd)
+	{
+		InterlockedDecrement(&m_RDS.mEON_TrafficEnd);
+		//sprintf(c, "EON StartCount = %d\n", m_RDS.mEON_TrafficEnd);
+		//OutputDebugString (c);
+		if(m_RDS.mEON_TrafficEnd > 100)
+		{
+			//EON traffic end detected
+			m_EONTAStop = true;
+			m_EONTAPIStop = m_RDS.mEON_TrafficPI;
+			//sprintf(c, "EON End, PI = %d\n", m_RDS.mEON_TrafficPI);
+			//OutputDebugString (c);
+		}
+	}
+	else
+		m_EONTAStop = false;
+
+	if(m_RDS.m_TrafficAlert)
+	{
+		InterlockedDecrement(&m_RDS.m_TrafficAlert);
+		//sprintf(c, "Traffic StartCount = %d\n", m_RDS.m_TrafficAlert);
+		//OutputDebugString (c);
+		if(m_RDS.m_TrafficAlert > 100) //needed to wind this up to prevent false alarms
+		{
+			//Traffic  detected
+			m_TrafficStartFlag = true;
+			//sprintf(c, "Traffic, PI = %d\n", m_RDS.m_Traffic_PI);
+			//OutputDebugString (c);
+		}
+		else if(m_RDS.m_TrafficAlert < 50)
+		{
+			//Traffic  detected
+			m_TrafficStartFlag = false;
+			//sprintf(c, "Traffic, PI = %d\n", m_RDS.m_Traffic_PI);
+			//OutputDebugString (c);
+		}
+	}
+	else
+		m_TrafficStartFlag = false;
+
+	if(m_RDS.m_TrafficComplete)
+	{
+		InterlockedDecrement(&m_RDS.m_TrafficComplete);
+		//sprintf(c, "Traffic CompleteCount = %d\n", m_RDS.m_TrafficComplete);
+		//OutputDebugString (c);
+		if(m_RDS.m_TrafficComplete > 100) //needed to wind this up to prevent false alarms
+		{
+			//Traffic  detected
+			m_TrafficEndFlag = true;
+		}
+		else if(m_RDS.m_TrafficComplete < 50)
+		{
+			//Traffic  detected
+			m_TrafficEndFlag = false;
+		}
+	}
+	else
+		m_TrafficEndFlag = false;
+
+	
 	return;
 }
 
@@ -375,13 +585,16 @@ void CFMRadioDevice::ResetRDSText()
 {
 	DWORD dwWaitResult;
 	//Resets the RDS text in the RDS Data (used when switching channels)
-	dwWaitResult = WaitForSingleObject( 
-		gRDSMutex,    // handle to mutex
-		INFINITE);  // no time-out interval
-
+	
 	m_RDS.ResetRDSText();
 
-	ReleaseMutex(gRDSMutex);
+	m_EONTAStart = false;
+	m_EONTAStop = false;
+	m_TrafficStartFlag = false;
+	m_TrafficEndFlag = false;
+
+	m_StereoCount = 0;	
+	m_isStereo = false;
 }
 
 bool CFMRadioDevice::SaveRadioSettings(RadioData* radioData)
@@ -401,377 +614,198 @@ bool CFMRadioDevice::SaveRadioSettings(RadioData* radioData)
 	return status;
 }
 
+HRESULT CFMRadioDevice::SaveGraphFile(IGraphBuilder *pGraph, WCHAR *wszPath) 
+{
+    const WCHAR wszStreamName[] = L"ActiveMovieGraph"; 
+    HRESULT hr;
+    
+    IStorage *pStorage = NULL;
+    hr = StgCreateDocfile(
+        wszPath,
+        STGM_CREATE | STGM_TRANSACTED | STGM_READWRITE | STGM_SHARE_EXCLUSIVE,
+        0, &pStorage);
+    if(FAILED(hr)) 
+    {
+        return hr;
+    }
+
+    IStream *pStream;
+    hr = pStorage->CreateStream(
+        wszStreamName,
+        STGM_WRITE | STGM_CREATE | STGM_SHARE_EXCLUSIVE,
+        0, 0, &pStream);
+    if (FAILED(hr)) 
+    {
+        pStorage->Release();    
+        return hr;
+    }
+
+    IPersistStream *pPersist = NULL;
+    pGraph->QueryInterface(IID_IPersistStream, (void**)&pPersist);
+    hr = pPersist->Save(pStream, TRUE);
+    pStream->Release();
+    pPersist->Release();
+    if (SUCCEEDED(hr)) 
+    {
+        hr = pStorage->Commit(STGC_DEFAULT);
+    }
+    pStorage->Release();
+    return hr;
+}
+
+
 bool CFMRadioDevice::OpenFMRadioAudio()
 {
 	bool status = false;
 
-	//Check the last known radio index, if it is not negative attemp to
-	//open this device, it will probably be the radio
-	if (m_LastKnownRadioIndex >= 0)
-	{
-		//If the open succeeds, then return status true, otherwise set the radio index to -1 to try again
-		if (waveInOpen(&m_FMRadioAudioHandle,
-			m_LastKnownRadioIndex,
-			&m_FMRadioWaveFormat, 
-			NULL, NULL, CALLBACK_NULL) == MMSYSERR_NOERROR)
-		{
-			status = true;
-		}
-		else
-		{
-			m_LastKnownRadioIndex = -1;
-		}
-	}
+	status = true;
+	HRESULT hr = S_OK;
 
-	//If status isn't true, then the radio didn't open successfully, or we are opening
-	//the radio for the first time
-	if (!status)
-	{
-		//Get the index of the audio device
-		m_LastKnownRadioIndex = GetAudioDeviceIndex();
+	int x = InitDirectShow();
 
-		//If a valid index is returned open the audio device
-		if (m_LastKnownRadioIndex >= 0)
+	// Firstly try to load a filter graph
+	hr = LoadGraphFile(g_pGraphBuilder, L"filter.grf");
+
+	// If this doesn't succeed, then make our own filter graph
+	if (SUCCEEDED(hr)) {
+		OutputDebugString("Loaded the filter graph\n");
+	} else {
+		OutputDebugString("Generating a filter graph\n");
+		// Create a Capture Filter Builder
+		hr = CoCreateInstance(CLSID_CaptureGraphBuilder2, NULL, CLSCTX_INPROC_SERVER, 
+			IID_ICaptureGraphBuilder2, (void**)&g_pCaptureGraphBuilder);
+
+		OutputDebugString("Created capture builder\n");
+		hr = g_pCaptureGraphBuilder->SetFiltergraph(g_pGraphBuilder);
+		OutputDebugString("Added graph builder to capture builder\n");
+
+		// Create our Direct Sound driver
+
+		IBaseFilter* dsound;
+		hr = CoCreateInstance(CLSID_DSoundRender, NULL, CLSCTX_INPROC_SERVER, 
+			IID_IBaseFilter, (void**)&dsound);
+		OutputDebugString("Created Default DirectSound Device\n");
+		hr = g_pGraphBuilder->AddFilter(dsound, L"Default DirectSound Device");
+		OutputDebugString("Added Default DirectSound Device to graph builder\n");
+
+		// Search for our radio
+		IBaseFilter* radio;
+
+		// Create the System Device Enumerator.
+		ICreateDevEnum *pSysDevEnum = NULL;
+		hr = CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC_SERVER,
+			IID_ICreateDevEnum, (void **)&pSysDevEnum);
+		OutputDebugString("Created device enumerator\n");
+
+		// Obtain a class enumerator for the audio category.
+		IEnumMoniker *pEnumCat = NULL;
+		hr = pSysDevEnum->CreateClassEnumerator(CLSID_AudioInputDeviceCategory, &pEnumCat, 0);
+		OutputDebugString("Created class enumerator\n");
+
+		if (SUCCEEDED(hr)) 
 		{
-			DWORD ret = waveInOpen(&m_FMRadioAudioHandle,
-				m_LastKnownRadioIndex,
-				&m_FMRadioWaveFormat,
-				NULL, NULL, CALLBACK_NULL);
-
-			//If the audio device opens successfully, then return true
-			if (ret == MMSYSERR_NOERROR)
+			// Enumerate the monikers.
+			IMoniker *pMoniker = NULL;
+			ULONG cFetched;
+			while(pEnumCat->Next(1, &pMoniker, &cFetched) == S_OK)
 			{
-				status = true;
+				IPropertyBag *pPropBag;
+				hr = pMoniker->BindToStorage(0, 0, IID_IPropertyBag, 
+					(void **)&pPropBag);
+				if (SUCCEEDED(hr))
+				{
+					OutputDebugString("Bound to storage\n");
+					// To retrieve the filter's friendly name, do the following:
+					VARIANT varName;
+					VariantInit(&varName);
+					hr = pPropBag->Read(L"FriendlyName", &varName, 0);
+					if (SUCCEEDED(hr))
+					{
+						OutputDebugString("Found device...");
+						// See if this filter is our radio
+						if((wcscmp((wchar_t*)V_BSTR(&varName), L"FM Radio") != 0)
+							//&& (wcscmp((wchar_t*)V_BSTR(&varName), L"ADS InstantFM Music") != 0)
+							//&& (wcscmp((wchar_t*)V_BSTR(&varName), L"RDing PCear FM Radio") != 0)
+							) {
+							OutputDebugString("it's not the radio\n");
+						} else {
+							OutputDebugString("it's the radio\n");
+							// create an instance of the filter
+							hr = pMoniker->BindToObject(NULL, NULL, IID_IBaseFilter,
+								(void**)&radio);
+							OutputDebugString("Bound to object\n");
+
+							// Now add the filter to the graph. 
+							hr = g_pGraphBuilder->AddFilter(radio, L"FM Radio");
+							OutputDebugString("Added filter to graph builder\n");
+							
+							IPin *CapturePin = NULL;
+							hr = radio->FindPin(L"Capture", &CapturePin);
+
+							IAMBufferNegotiation *BufNeg = NULL;
+							hr = CapturePin->QueryInterface(IID_IAMBufferNegotiation, (void **)&BufNeg); 
+
+							ALLOCATOR_PROPERTIES props;
+							props.cBuffers = -1;
+							props.cbBuffer = (200 * 176400) /1000;
+							props.cbAlign = -1;
+							props.cbPrefix = -1;
+
+							//BufNeg->SuggestAllocatorProperties(&props);
+
+							// Force render "FM Radio -> Default DirectSound Device"
+							hr = g_pCaptureGraphBuilder->RenderStream(NULL, &MEDIATYPE_Audio, radio, NULL, dsound);
+
+							// Allow DirectShow to render
+							//hr = g_pCaptureGraphBuilder->RenderStream(NULL, &MEDIATYPE_Audio, radio, NULL, NULL);
+							OutputDebugString("Rendered!!\n");
+							break;
+						}
+					}
+					VariantClear(&varName);
+
+
+					//Remember to release pFilter later.
+					pPropBag->Release();
+				}
+				pMoniker->Release();
 			}
+			pEnumCat->Release();
 		}
+		pSysDevEnum->Release();
 	}
+
+	//hr = SaveGraphFile(g_pGraphBuilder, L"mygraph.grf");
+
+	// I hope we've found the radio!!
+	g_pMediaControl->Run();
+
 
 	return status;
 }
 
-int CFMRadioDevice::GetAudioDeviceIndex()
-{
-	//This function is designed to open up the audio handle to the USB Radio. In
-	//Windows XP, the audio portion of the USB Radio will come up as "FM Radio". If
-	//this string is found, the radio will open the first one immediately, and begin
-	//to play it. If it isn't found then it will go through the device list and look
-	//for "USB Audio Device", which shows up in Windows 2000. If only one is found, then
-	//it will go ahead and open it immediately as well since the device will be the radio.
-	//However if more devices (or none) are found then it will prompt with a list for the 
-	//user to select the correct USB Audio device from the list.
-
-	int index = -1;
-	std::vector<std::string> deviceList;
-
-	//Obtain the number of input devices on the system
-	DWORD numWaveInputDevices = waveInGetNumDevs();
-
-	//Scan through each input device to see if we can find the FM Radio
-	for (DWORD i = 0; i < numWaveInputDevices; i++)
-	{
-		WAVEINCAPS waveInputCapabilities;
-
-		//Get the device capabilities of the currently indexed device
-		if (waveInGetDevCaps(i, &waveInputCapabilities, sizeof(waveInputCapabilities)) == MMSYSERR_NOERROR)
-		{
-			//If FM Radio is found, open the radio immediately, this is our device
-			if (!strcmp(waveInputCapabilities.szPname, "FM Radio")
-				|| !strcmp(waveInputCapabilities.szPname, "ADS InstantFM Music")
-				|| !strcmp(waveInputCapabilities.szPname, "RDing PCear FM Radio"))
-			{
-				//Set the current index to i, and set i to numWaveInputDevices to break
-				//out of the for loop
-				index = i;
-				i = numWaveInputDevices;
-			}
-			else
-			{
-				//Otherwise push back the string of the device on the list
-				deviceList.push_back(waveInputCapabilities.szPname);
-			}		
-		}
-	}
-
-#if 0
-	//If we haven't found a valid index, then start looking at the strings
-	if (index < 0)
-	{
-		DWORD usbAudioDeviceNum = 0;
-
-		//Go through the list of device strings
-		for (int i = 0; i < deviceList.size(); i++)
-		{
-			//See if a "USB Audio Device" is found
-			if (deviceList[i].find("USB Audio Device", 0))
-			{
-				//Increment the usb audio device number, and set our current index
-				usbAudioDeviceNum++;
-				index = i;
-			}
-		}
-
-		//If more than one (or no deivices) are found, then the user needs
-		//to select their audio input device from the list
-		if (usbAudioDeviceNum != 1)
-		{
-			//Reset the index to -1, invalid
-			index = -1;
-			//Bring up the device select dialog by passing it the audio input
-			//device list
-			CDeviceSelectDlg deviceSelectDlg(&deviceList);
-
-			if (deviceSelectDlg.DoModal() == IDOK)
-			{
-				//If OK is pressed, get the index selected
-				index = deviceSelectDlg.GetIndex();
-			}
-		}
-
-	}
-#endif
-
-	//Return the index that will be used
-	return index;
-}
-
-int	CFMRadioDevice::GetLastKnownRadioIndex()
-{
-	//Gets the last known radio index variable
-	return m_LastKnownRadioIndex;
-}
-
-void CFMRadioDevice::SetNewRadioIndex(int index)
-{
-	//Disable audio
-	bool reEnableAudio = m_Streaming;
-	m_Tuning = true;
-	CloseFMRadioAudio();
-
-	//Set the new index
-	m_LastKnownRadioIndex = index;
-
-	//Open the audio again (the new index will be used)
-	OpenFMRadioAudio();
-
-	//Enable audio again if we were streaming
-	if (reEnableAudio)
-	{
-		InitializeStream();
-	}
-
-	m_Tuning = false;
-}
 
 bool CFMRadioDevice::OpenSoundCard()
 {
 	bool status = false;
-	DWORD res;
-
-	//Open a handle to the default wave output device (sound card)
-	if ((res = waveOutOpen(&m_SoundCardHandle, WAVE_MAPPER,
-		&m_FMRadioWaveFormat, (DWORD)waveOutProc,
-		(DWORD)&gWaveFreeBlockCount, CALLBACK_FUNCTION)) == MMSYSERR_NOERROR)
-	{
-		status = true;
-	}
-
+	status = true;
 	return status;
 }
 
-void CFMRadioDevice::InitializeStream()
-{
-	if (!primaryRadio) return;
-
-	waveInStart(m_FMRadioAudioHandle);
-
-	//Reset block status to "empty" the buffer (simply starting over and refilling)
-	m_CurrentBlock = 0;
-	m_FreeBlock = 0;
-	gWaveFreeBlockCount = BLOCK_COUNT;
-
-	//Fill the audio buffer to initialize the stream
-	while (gWaveFreeBlockCount > (BLOCK_COUNT - BUFFER_PADDING))
-	{
-		StreamAudioIn();
-		StreamAudio();
-		Sleep(20);
-	}
-
-	//Skip the first chunk (at least half) of the padded buffer to eliminate any audio glitches
-	if (BUFFER_PADDING > 10)
-	{
-		m_CurrentBlock = 5;
-		gWaveFreeBlockCount = 5;
-	}
-
-	//Set streaming to true
-	m_Streaming = true;
-}
-
-void CFMRadioDevice::StreamAudio()
-{
-	//If our timer thread is being stopped, then don't do this
-	if (!m_StreamingAllowed) {
-		return;
-	}
-
-	//Check that the handles arent NULL
-	if ((m_FMRadioAudioHandle) && (m_SoundCardHandle))
-	{
-		//If there are any free blocks, then stream audio in.
-		if (gWaveFreeBlockCount) {
-			StreamAudioIn();
-		}
-
-		//If there are any blocks ready for output, then stream audio out
-		if (gWaveFreeBlockCount < BLOCK_COUNT) {
-			StreamAudioOut();
-		}
-	}
-}
-
-bool CFMRadioDevice::IsStreaming()
-{
-	return m_Streaming;
-}
-
-bool CFMRadioDevice::StreamAudioIn()
-{
-	bool status = false;
-
-	//Unprepare header to begin preperation process
-	waveInUnprepareHeader(m_FMRadioAudioHandle, &m_OutputHeader[m_FreeBlock], sizeof(m_OutputHeader[m_FreeBlock]));
-
-	//Prepare the header for streaming in
-	if (waveInPrepareHeader(m_FMRadioAudioHandle, &m_OutputHeader[m_FreeBlock], sizeof(m_OutputHeader[m_FreeBlock])) == MMSYSERR_NOERROR)
-	{
-		//Get the buffer of audio in the input header
-		if (waveInAddBuffer(m_FMRadioAudioHandle, &m_OutputHeader[m_FreeBlock], sizeof(m_OutputHeader[m_FreeBlock])) == MMSYSERR_NOERROR)
-		{				
-			//Enter the critical section to decrement the free block count
-			EnterCriticalSection(&gWaveCriticalSection);
-			gWaveFreeBlockCount--;
-			LeaveCriticalSection(&gWaveCriticalSection);
-
-			//Increment the free block index, and scale it
-			m_FreeBlock++;
-			m_FreeBlock %= BLOCK_COUNT;
-
-			status = true;
-		}
-	}
-
-	return status;
-}
-
-static void CALLBACK waveOutProc(HWAVEOUT hwo, UINT uMsg, DWORD dwInstance, DWORD dwParam1, DWORD dwParam2)
-{
-	//If a WaveOut Done message comes back, then enter the critical section to
-	//increment the free block counter
-	if (uMsg == WOM_DONE)
-	{
-		EnterCriticalSection(&gWaveCriticalSection);
-		int* freeBlockCounter = (int*)dwInstance;
-		(*freeBlockCounter)++;
-		LeaveCriticalSection(&gWaveCriticalSection);
-	}
-}
-
-bool CFMRadioDevice::StreamAudioOut()
-{
-	bool status = false;
-
-	//Unprepare header to begin preparation to stream out
-	waveOutUnprepareHeader(m_SoundCardHandle, &m_OutputHeader[m_CurrentBlock], sizeof(WAVEHDR));
-
-	//Prepare the header for streaming out
-	if (waveOutPrepareHeader(m_SoundCardHandle, &m_OutputHeader[m_CurrentBlock], sizeof(WAVEHDR)) == MMSYSERR_NOERROR)
-	{
-		if (m_AudioAllowed)
-			status = (waveOutWrite(m_SoundCardHandle, &m_OutputHeader[m_CurrentBlock], sizeof(WAVEHDR)) == MMSYSERR_NOERROR);
-		else
-			status = true;
-
-		//Write the sound to the sound card
-		if (status)
-		{
-			//waveOutProc callback function will get called, and free block counter gets incremented
-			if (!m_AudioAllowed)
-				if (gWaveFreeBlockCount < BLOCK_COUNT) waveOutProc(0, WOM_DONE, (DWORD)&gWaveFreeBlockCount, 0, 0);
-
-			//Increment the index of the current block to be played
-			m_CurrentBlock++;
-			m_CurrentBlock %= BLOCK_COUNT;
-
-			status = true;
-		}
-	}
-
-	return status;
-}
-
-BYTE CFMRadioDevice::GetWaveOutVolume()
-{
-	DWORD level = VOLUME_MIN;
-
-	//This gets the current wave output volume
-	waveOutGetVolume(m_SoundCardHandle, &level);
-
-	//This determines the level of one channel
-	level = level & 0xFFFF;
-
-	//If the level is above 0, then calculate it's percentage (0-100%)
-	if (level)	
-		level = (DWORD)((double)(level / (double)0xFFFF) * 100.0);
-
-	//Return the percentage level of volume
-	return (BYTE)(level & 0xFF);
-}
-
-bool CFMRadioDevice::SetWaveOutVolume(BYTE level)
-{
-	bool status = false;
-	DWORD setLevel = 0x00000000;
-
-	//Don't set the volume to anything greater than the max level
-	if (level > VOLUME_MAX)
-		level = VOLUME_MAX;
-
-	//Calculate a value based on the percentage input of one channel
-	if (level)
-		setLevel = (DWORD)(((double)level / 100.0) * (double)0xFFFF);
-
-	//Set the volume for L and R channels
-	setLevel = (setLevel << 16) | setLevel;
-
-	//Set the volume
-	if (waveOutSetVolume(m_SoundCardHandle, setLevel) == MMSYSERR_NOERROR)
-		status = true;
-
-	return status;
-}
 
 bool CFMRadioDevice::CloseFMRadioAudio()
 {
 	bool status = false;
 
-	//Stop the input from the device
-	waveInStop(m_FMRadioAudioHandle);
+	if (g_pMediaControl != NULL)
+		g_pMediaControl->Stop();
+	
+	HELPER_RELEASE(g_pMediaPosition);
+    HELPER_RELEASE(g_pMediaEvent);
+    HELPER_RELEASE(g_pMediaControl);
+    HELPER_RELEASE(g_pGraphBuilder);
 
-	//Reset the device
-	waveInReset(m_FMRadioAudioHandle);
-
-	//Close the device
-	waveInClose(m_FMRadioAudioHandle);
-
-	//Reset handles and variables
-	m_FMRadioAudioHandle = NULL;
-	m_CurrentBlock = 0;
-	m_FreeBlock = 0;
-	gWaveFreeBlockCount = BLOCK_COUNT;
-	m_Streaming = false;
 	status = true;
-
 	return status;
 }
 
@@ -779,48 +813,10 @@ bool CFMRadioDevice::CloseSoundCard()
 {
 	bool status = false;
 
-	//Reset the device
-	waveOutReset(m_SoundCardHandle);
-
-	//Close the device
-	waveOutClose(m_SoundCardHandle);
-
-	//Reset the handle
-	m_SoundCardHandle = NULL;
 	status = true;
-
 	return status;
 }
 
-WAVEHDR* CFMRadioDevice::AllocateBlocks(int size, int count)
-{
-	char* buffer;
-	WAVEHDR* blocks = NULL;
-	DWORD totalBufferSize = (size + sizeof(WAVEHDR)) * count;
-
-	//Allocate zero initialized memory the size of our total buffer
-	if (buffer = (char*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, totalBufferSize))
-	{
-		blocks = (WAVEHDR*)buffer;
-		buffer += sizeof(WAVEHDR) * count;
-
-		//Fill the headers out based on our allocated space
-		for (int i = 0; i < count; i++)
-		{
-			blocks[i].dwBufferLength = size;
-			blocks[i].lpData = buffer;
-			buffer += size;
-		}
-	}
-
-	return blocks;
-}
-
-void CFMRadioDevice::FreeBlocks(WAVEHDR* blockArray)
-{
-	//Free the heap memory from the pointer provided
-	HeapFree(GetProcessHeap(), 0, blockArray);
-}
 
 bool CFMRadioDevice::OpenFMRadioData()
 {
@@ -904,6 +900,7 @@ bool CFMRadioDevice::OpenFMRadioData()
 										pvid = SILABS_VID;
 										ppid = SILABS_PID;
 										//m_FMRadioDataHandle2 = m_FMRadioDataHandle;
+										CloseHandle(m_FMRadioDataHandle);
 										m_FMRadioDataHandle = hHidDeviceHandle;
 										OutputDebugString(" - promoted it to be primary\n");
 									}
@@ -925,6 +922,7 @@ bool CFMRadioDevice::OpenFMRadioData()
 										pvid = SILABS_VID;
 										ppid = SILABS_PID;
 										//m_FMRadioDataHandle2 = m_FMRadioDataHandle;
+										CloseHandle(m_FMRadioDataHandle);
 										m_FMRadioDataHandle = hHidDeviceHandle;
 										OutputDebugString(" - promoted it to be primary\n");
 									}
@@ -962,7 +960,7 @@ bool CFMRadioDevice::OpenFMRadioData()
 	PHIDP_PREPARSED_DATA preparsedData;
 
 	//Get the preparsed data structure
-	if (HidD_GetPreparsedData(hHidDeviceHandle, &preparsedData))
+	if (HidD_GetPreparsedData(m_FMRadioDataHandle, &preparsedData))
 	{
 		HIDP_CAPS capabilities;
 
@@ -1046,6 +1044,12 @@ bool CFMRadioDevice::InitializeRadioData(RadioData* radioData)
 		default						:	m_Register[POWERCFG] &= ~POWERCFG_MONO;	break;
 		}
 
+		if(radioData->muteOnStartup)
+			m_Register[POWERCFG] &= ~POWERCFG_DMUTE;
+		else
+			m_Register[POWERCFG] |= POWERCFG_DMUTE;
+
+
 		//Check the seek threshold
 		m_Register[SYSCONFIG2] &= ~SYSCONFIG2_SEEKTH;
 		m_Register[SYSCONFIG2] |= (WORD)radioData->seekThreshold << 8;
@@ -1119,15 +1123,26 @@ bool CFMRadioDevice::Mute(bool mute)
 
 	if (mute)
 	{
+		m_Register[POWERCFG] &= ~POWERCFG_DMUTE;
 		m_AudioAllowed = false;
-		waveOutReset(m_SoundCardHandle);
+		if (g_pMediaControl != NULL) {
+			//g_pMediaControl->Pause();
+			g_pMediaControl->Stop();
+		}
 	}
 	else
 	{
+		m_Register[POWERCFG] |= POWERCFG_DMUTE;
 		m_AudioAllowed = true;
+		if (g_pMediaControl != NULL) {
+			g_pMediaControl->Run();
+		}
 	}
 
-	return true;
+	if (SetRegisterReport(POWERCFG_REPORT, &m_Register[POWERCFG], 1))
+		return true;
+	else
+		return false;
 }
 
 // Buggy SHIT from who knows -- Don't use
@@ -1179,12 +1194,126 @@ bool CFMRadioDevice::Tune(double frequency)
 {
 
 	QueFreq = (int)((frequency+0.001)*10);
+	QuePI = 0;
+
+	return true;
+}
+
+bool CFMRadioDevice::PITune(double frequency, int targetPI, double PIFrequency)
+{
+
+	QueFreq = (int)((PIFrequency+0.001)*10);
+	QuePI = targetPI;
+	BackupFreq = (int)((frequency+0.001)*10);
 
 	return true;
 }
 
 bool CFMRadioDevice::DoTune(double frequency)
 {
+	bool status = false;
+
+	//char output [256];
+	//sprintf(output, "TuneFreq: %f\nChanBits: %d\nCalc: %d\n", frequency, (int)CalculateStationFrequencyBits(frequency), (int)((frequency+0.001)*10));
+	//OutputDebugString(output);
+	//MessageBox(0, output, "Test",0);
+
+	//Check that the frequency is in range for the current band
+	if (((m_Register[SYSCONFIG2] & SYSCONFIG2_BAND) && (frequency >= 76.0) && (frequency <= 90.0)) || 
+		(!(m_Register[SYSCONFIG2] & SYSCONFIG2_BAND) && (frequency >= 87.5) && (frequency <= 108.0)))
+	{
+		WORD channel;
+
+		//Determine the frequency bits
+		channel = CalculateStationFrequencyBits(frequency);
+		m_Register[CHANNEL] &= ~CHANNEL_CHAN;
+		m_Register[CHANNEL] |= channel | CHANNEL_TUNE;
+
+		m_Tuning = true;
+
+		//mute during tune
+		if (g_pMediaControl != NULL) 
+			g_pMediaControl->Stop();
+		//Use set feature to set the channel
+		if (SetRegisterReport(CHANNEL_REPORT, &m_Register[CHANNEL], 1))
+		{
+			//Read in the status register to poll STC and see when the tune is complete
+			bool stc = false, error = false;
+
+			//Get the current time to check for polling timeout
+			SYSTEMTIME systemTime;
+			GetSystemTime(&systemTime);
+			WORD startTime = systemTime.wSecond + POLL_TIMEOUT_SECONDS;
+
+			//Poll the RSSI register to see if STC gets set
+			while (!stc && !error)
+			{	
+				if (GetRegisterReport(STATUSRSSI_REPORT, &m_Register[STATUSRSSI], 1))
+				{
+					if (m_Register[STATUSRSSI] & STATUSRSSI_STC)
+					{
+						stc = true;
+					}
+				}
+				else
+				{
+					error = true;
+				}
+
+				//Get current time and see if timout has occurred
+				GetSystemTime(&systemTime);
+				if ((systemTime.wSecond - startTime) > POLL_TIMEOUT_SECONDS)
+					error = true;
+				//if(ExFlags & FLAG_SLEEP) Sleep(3);
+			}
+
+			//Once we are out of the polling loop, if there was no error and tune completed, clear 
+			//the channel bit and get the current channel
+			if (stc && !error)
+			{
+				m_Register[CHANNEL] &= ~CHANNEL_TUNE;
+
+				if (SetRegisterReport(CHANNEL_REPORT, &m_Register[CHANNEL], 1))
+					status = true;
+
+				GetRegisterReport(READCHAN_REPORT, &m_Register[READCHAN], 1);
+
+			}
+			//unmute
+			if (g_pMediaControl != NULL)
+				g_pMediaControl->Run();
+		}
+		else
+		{
+			//If the write failed, set our tune bit back
+			m_Register[CHANNEL] &= ~CHANNEL_TUNE;
+		}
+
+		CurrFreq = (int)((frequency+0.001)*10);
+		PopOut = true;
+
+		//Set tuning back to false
+		m_Tuning = false;
+	}	
+
+	if (status) {
+		ResetRDSText();
+
+		RDSData rds_data;
+		if (GetRDSData(&rds_data)) {
+			RadioData radioData;
+			GetRadioData(&radioData);
+			radioData.currentStation = rds_data.currentStation;
+			SetRadioData(&radioData);
+		}
+	}
+
+	return status;
+}
+
+bool CFMRadioDevice::DoQuickTune(double frequency)
+{
+	//used without flash update for secondary radio, otherwise compromises flash life
 	bool status = false;
 
 	//char output [256];
@@ -1258,23 +1387,15 @@ bool CFMRadioDevice::DoTune(double frequency)
 		}
 
 		CurrFreq = (int)((frequency+0.001)*10);
+		QueFreq = CurrFreq;
 		PopOut = true;
 
 		//Set tuning back to false
 		m_Tuning = false;
 	}	
 
-	if (status) {
+	if (status)
 		ResetRDSText();
-
-		RDSData rds_data;
-		if (GetRDSData(&rds_data)) {
-			RadioData radioData;
-			GetRadioData(&radioData);
-			radioData.currentStation = rds_data.currentStation;
-			SetRadioData(&radioData);
-		}
-	}
 
 	return status;
 }
@@ -1295,6 +1416,9 @@ bool CFMRadioDevice::Seek(bool seekUp)
 
 	m_Tuning = true;
 
+	//mute during tune
+	if (g_pMediaControl != NULL) 
+		g_pMediaControl->Stop();
 	//Use set feature to set the channel
 	if (SetRegisterReport(POWERCFG_REPORT, &m_Register[POWERCFG], 1))
 	{
@@ -1346,7 +1470,10 @@ bool CFMRadioDevice::Seek(bool seekUp)
 		m_Register[POWERCFG] &= ~POWERCFG_SEEK;
 	}
 
-
+	//mute during tune
+	if (g_pMediaControl != NULL) 
+		g_pMediaControl->Run();
+	
 	//Set tuning back to false
 	m_Tuning = false;
 
@@ -1368,6 +1495,81 @@ bool CFMRadioDevice::Seek(bool seekUp)
 	return status;
 }
 
+bool CFMRadioDevice::QuickSeek(bool seekUp)
+{
+
+	bool status = false;
+	int i;
+
+	//Set the seekUp bit in the Power Config register
+	if (seekUp)
+		m_Register[POWERCFG] |= POWERCFG_SEEKUP;
+	else
+		m_Register[POWERCFG] &= ~POWERCFG_SEEKUP;
+
+	//Set the seek bit in the Power Config register
+	m_Register[POWERCFG] |= POWERCFG_SEEK;
+
+	m_Tuning = true;
+
+	//Use set feature to set the channel
+	if (SetRegisterReport(POWERCFG_REPORT, &m_Register[POWERCFG], 1))
+	{
+		//Read in the status register to poll STC and see when the seek is complete
+		bool stc = false, error = false;
+
+		//Get the current time to check for polling timeout
+		SYSTEMTIME systemTime;
+		GetSystemTime(&systemTime);
+		WORD startTime = systemTime.wSecond + POLL_TIMEOUT_SECONDS;
+
+		//Poll the RSSI register to see if STC gets set
+
+		for(i=0;i<20;i++)
+		{
+			Sleep(100);
+			if (GetRegisterReport(STATUSRSSI_REPORT, &m_Register[STATUSRSSI], 1))
+			{
+				if (m_Register[STATUSRSSI] & STATUSRSSI_STC)
+				{
+					stc = true;
+					break;
+				}
+			}
+			else
+			{
+				error = true;
+				break;
+			}
+		}
+
+		//Once we are out of the polling loop, if there was no error and tune completed, clear 
+		//the channel bit and get the current channel
+		if (stc && !error)
+		{
+			m_Register[POWERCFG] &= ~POWERCFG_SEEK;
+			if (SetRegisterReport(POWERCFG_REPORT, &m_Register[POWERCFG], 1))
+				status = true;
+			GetRegisterReport(READCHAN_REPORT, &m_Register[READCHAN], 1);
+		}
+	}
+	else
+	{
+		//If the write failed, set our seek bit back
+		m_Register[POWERCFG] &= ~POWERCFG_SEEK;
+	}
+	//Set tuning back to false
+	m_Tuning = false;
+	ResetRDSText();
+
+	// Save new Freq
+	CurrFreq = (int)(CalculateStationFrequency(m_Register[READCHAN] & READCHAN_READCHAN)*10);
+	QueFreq = CurrFreq;
+	PopOut = true;
+
+	return status;
+}
+
 double CFMRadioDevice::CalculateStationFrequency(FMRADIO_REGISTER hexChannel)
 {
 	double frequency = 0;
@@ -1382,6 +1584,29 @@ double CFMRadioDevice::CalculateStationFrequency(FMRADIO_REGISTER hexChannel)
 	case SYSCONFIG2_SPACE_200KHZ :	spacing = 0.2;	break;
 	case SYSCONFIG2_SPACE_100KHZ :	spacing = 0.1;	break;
 	case SYSCONFIG2_SPACE_50KHZ :	spacing = 0.05;	break;
+	}
+
+	//Calculate the frequency and add .0001 to round up numbers not quite close enough to the frequency
+	frequency = (int)(((band + (spacing * channel)) + .0001) * 100.0) / 100.0;
+
+	return frequency;
+}
+
+double CFMRadioDevice::CalculateStationFrequency(FMRADIO_REGISTER hexChannel, BYTE ScratchBand, BYTE ScratchSpacing)
+{
+	double frequency = 0;
+
+	double band = 87.5, spacing = 0.2, channel = (double)hexChannel;
+
+	//Determine the band and spacing
+	if(ScratchBand == DATA_BAND_76_90MHZ)
+		band = 76.0;
+
+	switch(ScratchSpacing)
+	{
+	case DATA_SPACING_200KHZ :	spacing = 0.2;	break;
+	case DATA_SPACING_100KHZ :	spacing = 0.1;	break;
+	case DATA_SPACING_50KHZ :	spacing = 0.05;	break;
 	}
 
 	//Calculate the frequency and add .0001 to round up numbers not quite close enough to the frequency
@@ -1412,7 +1637,7 @@ WORD CFMRadioDevice::CalculateStationFrequencyBits(double frequency)
 	return hexChannel;
 }
 
-bool CFMRadioDevice::GetRadioData(RadioData* radioData)
+/*bool CFMRadioDevice::GetRadioData(RadioData* radioData)
 {
 	bool status = false;
 
@@ -1481,25 +1706,31 @@ bool CFMRadioDevice::GetRadioData(RadioData* radioData)
 			//		 &0x0F = Scan time
 
 			radioData->firstRun = false;
-			radioData->preset[0] = CalculateStationFrequency((WORD)(((m_ScratchPage[3] & 0xFF) << 2) | ((m_ScratchPage[4] & 0xC0) >> 6)));
-			radioData->preset[1] = CalculateStationFrequency((WORD)(((m_ScratchPage[4] & 0x3F) << 4) | ((m_ScratchPage[5] & 0xF0) >> 4)));
-			radioData->preset[2] = CalculateStationFrequency((WORD)(((m_ScratchPage[5] & 0x0F) << 6) | ((m_ScratchPage[6] & 0xFC) >> 2)));
-			radioData->preset[3] = CalculateStationFrequency((WORD)(((m_ScratchPage[6] & 0x03) << 8) | (m_ScratchPage[7] & 0xFF)));
-			radioData->preset[4] = CalculateStationFrequency((WORD)(((m_ScratchPage[8] & 0xFF) << 2) | ((m_ScratchPage[9] & 0xC0) >> 6)));
-			radioData->preset[5] = CalculateStationFrequency((WORD)(((m_ScratchPage[9] & 0x3F) << 4) | ((m_ScratchPage[10] & 0xF0) >> 4)));
-			radioData->preset[6] = CalculateStationFrequency((WORD)(((m_ScratchPage[10] & 0x0F) << 6) | ((m_ScratchPage[11] & 0xFC) >> 2)));
-			radioData->preset[7] = CalculateStationFrequency((WORD)(((m_ScratchPage[11] & 0x03) << 8) | (m_ScratchPage[12] & 0xFF)));
-			radioData->preset[8] = CalculateStationFrequency((WORD)(((m_ScratchPage[13] & 0xFF) << 2) | ((m_ScratchPage[14] & 0xC0) >> 6)));
-			radioData->preset[9] = CalculateStationFrequency((WORD)(((m_ScratchPage[14] & 0x3F) << 4) | ((m_ScratchPage[15] & 0xF0) >> 4)));
-			radioData->preset[10] = CalculateStationFrequency((WORD)(((m_ScratchPage[15] & 0x0F) << 6) | ((m_ScratchPage[16] & 0xFC) >> 2)));
-			radioData->preset[11] = CalculateStationFrequency((WORD)(((m_ScratchPage[16] & 0x03) << 8) | (m_ScratchPage[17] & 0xFF)));
-			radioData->currentStation = CalculateStationFrequency((WORD)(((m_ScratchPage[18] & 0xFF) << 2) | ((m_ScratchPage[19] & 0xC0) >> 6)));
+			//Note Can't use CalculateStationFrequency here as it relies on m_register which
+			//isn't valid yet, need to use dedicated function that used config information
+			//to resolve band and spacing
 			radioData->band = m_ScratchPage[19] & DATA_BAND;
 			radioData->spacing = m_ScratchPage[19] & DATA_SPACING;
+			radioData->preset[0] = CalculateStationFrequency((WORD)(((m_ScratchPage[3] & 0xFF) << 2) | ((m_ScratchPage[4] & 0xC0) >> 6)), radioData->band, radioData->spacing);
+			radioData->preset[1] = CalculateStationFrequency((WORD)(((m_ScratchPage[4] & 0x3F) << 4) | ((m_ScratchPage[5] & 0xF0) >> 4)), radioData->band, radioData->spacing);
+			radioData->preset[2] = CalculateStationFrequency((WORD)(((m_ScratchPage[5] & 0x0F) << 6) | ((m_ScratchPage[6] & 0xFC) >> 2)), radioData->band, radioData->spacing);
+			radioData->preset[3] = CalculateStationFrequency((WORD)(((m_ScratchPage[6] & 0x03) << 8) | (m_ScratchPage[7] & 0xFF)), radioData->band, radioData->spacing);
+			radioData->preset[4] = CalculateStationFrequency((WORD)(((m_ScratchPage[8] & 0xFF) << 2) | ((m_ScratchPage[9] & 0xC0) >> 6)), radioData->band, radioData->spacing);
+			radioData->preset[5] = CalculateStationFrequency((WORD)(((m_ScratchPage[9] & 0x3F) << 4) | ((m_ScratchPage[10] & 0xF0) >> 4)), radioData->band, radioData->spacing);
+			radioData->preset[6] = CalculateStationFrequency((WORD)(((m_ScratchPage[10] & 0x0F) << 6) | ((m_ScratchPage[11] & 0xFC) >> 2)), radioData->band, radioData->spacing);
+			radioData->preset[7] = CalculateStationFrequency((WORD)(((m_ScratchPage[11] & 0x03) << 8) | (m_ScratchPage[12] & 0xFF)), radioData->band, radioData->spacing);
+			radioData->preset[8] = CalculateStationFrequency((WORD)(((m_ScratchPage[13] & 0xFF) << 2) | ((m_ScratchPage[14] & 0xC0) >> 6)), radioData->band, radioData->spacing);
+			radioData->preset[9] = CalculateStationFrequency((WORD)(((m_ScratchPage[14] & 0x3F) << 4) | ((m_ScratchPage[15] & 0xF0) >> 4)), radioData->band, radioData->spacing);
+			radioData->preset[10] = CalculateStationFrequency((WORD)(((m_ScratchPage[15] & 0x0F) << 6) | ((m_ScratchPage[16] & 0xFC) >> 2)), radioData->band, radioData->spacing);
+			radioData->preset[11] = CalculateStationFrequency((WORD)(((m_ScratchPage[16] & 0x03) << 8) | (m_ScratchPage[17] & 0xFF)), radioData->band, radioData->spacing);
+			radioData->currentStation = CalculateStationFrequency((WORD)(((m_ScratchPage[18] & 0xFF) << 2) | ((m_ScratchPage[19] & 0xC0) >> 6)), radioData->band, radioData->spacing);
 			if (ExFlags & FLAG_100Khz) radioData->spacing = DATA_SPACING_100KHZ; // If override to 100Khz
 			if (ExFlags & FLAG_200Khz) radioData->spacing = DATA_SPACING_200KHZ; // If override to 200Khz
-			radioData->deemphasis = m_ScratchPage[19] & DATA_DEEMPHASIS;
-			radioData->monoStereo = DATA_MONOSTEREO_STEREO; // m_ScratchPage[19] & DATA_MONOSTEREO;
+			//Temporary mod to fix ADS bug
+			radioData->spacing = DATA_SPACING_100KHZ;
+			radioData->deemphasis = DATA_DEEMPHASIS_50;
+			radioData->monoStereo = DATA_MONOSTEREO_STEREO; 
+			// m_ScratchPage[19] & DATA_MONOSTEREO;
 			radioData->seekThreshold = PREFERRED_SEEK_THRESHOLD; // m_ScratchPage[20];
 			radioData->alwaysOnTop = (m_ScratchPage[21] & DATA_ALWAYSONTOP) ? true : false;
 			radioData->showInTray = (m_ScratchPage[21] & DATA_SHOWINTRAY) ? true : false;
@@ -1513,9 +1744,154 @@ bool CFMRadioDevice::GetRadioData(RadioData* radioData)
 	}
 
 	return status;
+}*/
+
+bool CFMRadioDevice::GetRadioData(RadioData* radioData)
+{
+	bool status = false;
+	int i, CSum;
+
+	if (GetScratchReport(SCRATCH_REPORT, m_ScratchPage, SCRATCH_PAGE_SIZE))
+	{	
+		//Get all the generic data
+		radioData->swVersion = m_ScratchPage[1];
+		radioData->hwVersion = m_ScratchPage[2];
+		radioData->partNumber = (m_Register[DEVICEID] & DEVICEID_PN) >> 12;
+		radioData->manufacturerID = m_Register[DEVICEID] & DEVICEID_MFGID;
+		radioData->chipVersion = (m_Register[CHIPID] & CHIPID_REV) >> 10;
+		radioData->deviceVersion = (m_Register[CHIPID] & CHIPID_DEV) >> 9;
+		radioData->firmwareVersion = m_Register[CHIPID] & CHIPID_FIRMWARE;
+
+		CSum = 0;
+		for(i=0;i<SCRATCH_PAGE_SIZE;i++)
+			CSum+=m_ScratchPage[i];
+		
+		//clear out PI list, will get filled later if available
+		for(i=0;i<PI_NUM;i++)
+		{
+			radioData->PI[i] = 0;
+			radioData->PI_Freq[i] = 0.0;
+		}
+
+		//If the scratch page's first byte is 0, then it is new, set all options to default
+		//disable checksum - more trouble than it's worth
+		if (m_ScratchPage[0] == 0x00)// || ((CSum &0xff) != 0))
+		{	
+			radioData->firstRun = true;
+			if(m_ScratchPage[1] == 0)
+				radioData->swVersion = 7;
+			if(m_ScratchPage[2] == 0)
+				radioData->hwVersion = 1;
+			radioData->preset[0] = 90.5;
+			radioData->preset[1] = 92.1;
+			radioData->preset[2] = 93.3;
+			radioData->preset[3] = 93.7;
+			radioData->preset[4] = 94.7;
+			radioData->preset[5] = 96.7;
+			radioData->preset[6] = 100.7;
+			radioData->preset[7] = 101.5;
+			radioData->preset[8] = 102.3;
+			radioData->preset[9] = 103.5;
+			radioData->preset[10] = 105.9;
+			radioData->preset[11] = 107.1;
+			radioData->currentStation = 102.3;
+			radioData->seekThreshold = PREFERRED_SEEK_THRESHOLD;
+			radioData->band = DATA_BAND_875_108MHZ;
+			radioData->spacing = DATA_SPACING_100KHZ;
+			radioData->deemphasis = DATA_DEEMPHASIS_50;
+			radioData->monoStereo = DATA_MONOSTEREO_STEREO;
+			radioData->alwaysOnTop = false;
+			radioData->showInTray = false;
+			radioData->showInTitleBar = false;
+			radioData->muteOnStartup = false;
+			radioData->scanTime = 4;
+			radioData->bufferSize = 0;
+			radioData->EonPI = 49666; //BBC R2
+		}
+		else
+		{
+			//Radio data is read in from the scratch page, and is decoded as follows:
+			//[0] = 0x00/First run radio (only 0, 1, 2 are valid spaces), 0x01/Radio with valid settings
+			//[1] = Software version
+			//[2] = Hardware version
+			//[3] = Preset channels, 10 bits per channel starting at 3 [3]&0xFF|[4]&0xC0 = P1, 
+			//  													   [4]&0x3F|[5]&0xF0 = P2, etc.
+			//[..] = ..
+			//[17] = Last register containing preset channel bits
+			//[18] = &0xFF = Current station hi
+			//[19] = &0xC0 = Current station low,
+			//		 &0x20 = Band,
+			//		 &0x10 = Mono/Stereo,
+			//		 &0x0C = Spacing,
+			//		 &0x02 = De-emphasis,
+			//		 &0x01 = Ignore AB Flag
+			//[20] = Seek threshold
+			//[21] = &0x80 = Always on top,
+			//		 &0x40 = Show in tray,
+			//		 &0x20 = Show in title bar,
+			//		 &0x10 = Mute on statup,
+			//		 &0x0F = Scan time
+
+			radioData->firstRun = false;
+			//Note Can't use CalculateStationFrequency here as it relies on m_register which
+			//isn't valid yet, need to use dedicated function that used config information
+			//to resolve band and spacing
+			radioData->band = m_ScratchPage[19] & DATA_BAND;
+			radioData->spacing = m_ScratchPage[19] & DATA_SPACING;
+			radioData->preset[0] = CalculateStationFrequency((WORD)(((m_ScratchPage[3] & 0xFF) << 2) | ((m_ScratchPage[4] & 0xC0) >> 6)), radioData->band, radioData->spacing);
+			radioData->preset[1] = CalculateStationFrequency((WORD)(((m_ScratchPage[4] & 0x3F) << 4) | ((m_ScratchPage[5] & 0xF0) >> 4)), radioData->band, radioData->spacing);
+			radioData->preset[2] = CalculateStationFrequency((WORD)(((m_ScratchPage[5] & 0x0F) << 6) | ((m_ScratchPage[6] & 0xFC) >> 2)), radioData->band, radioData->spacing);
+			radioData->preset[3] = CalculateStationFrequency((WORD)(((m_ScratchPage[6] & 0x03) << 8) | (m_ScratchPage[7] & 0xFF)), radioData->band, radioData->spacing);
+			radioData->preset[4] = CalculateStationFrequency((WORD)(((m_ScratchPage[8] & 0xFF) << 2) | ((m_ScratchPage[9] & 0xC0) >> 6)), radioData->band, radioData->spacing);
+			radioData->preset[5] = CalculateStationFrequency((WORD)(((m_ScratchPage[9] & 0x3F) << 4) | ((m_ScratchPage[10] & 0xF0) >> 4)), radioData->band, radioData->spacing);
+			radioData->preset[6] = CalculateStationFrequency((WORD)(((m_ScratchPage[10] & 0x0F) << 6) | ((m_ScratchPage[11] & 0xFC) >> 2)), radioData->band, radioData->spacing);
+			radioData->preset[7] = CalculateStationFrequency((WORD)(((m_ScratchPage[11] & 0x03) << 8) | (m_ScratchPage[12] & 0xFF)), radioData->band, radioData->spacing);
+			radioData->preset[8] = CalculateStationFrequency((WORD)(((m_ScratchPage[13] & 0xFF) << 2) | ((m_ScratchPage[14] & 0xC0) >> 6)), radioData->band, radioData->spacing);
+			radioData->preset[9] = CalculateStationFrequency((WORD)(((m_ScratchPage[14] & 0x3F) << 4) | ((m_ScratchPage[15] & 0xF0) >> 4)), radioData->band, radioData->spacing);
+			radioData->preset[10] = CalculateStationFrequency((WORD)(((m_ScratchPage[15] & 0x0F) << 6) | ((m_ScratchPage[16] & 0xFC) >> 2)), radioData->band, radioData->spacing);
+			radioData->preset[11] = CalculateStationFrequency((WORD)(((m_ScratchPage[16] & 0x03) << 8) | (m_ScratchPage[17] & 0xFF)), radioData->band, radioData->spacing);
+			radioData->currentStation = CalculateStationFrequency((WORD)(((m_ScratchPage[18] & 0xFF) << 2) | ((m_ScratchPage[19] & 0xC0) >> 6)), radioData->band, radioData->spacing);
+			radioData->deemphasis = m_ScratchPage[19] & DATA_DEEMPHASIS;
+			radioData->monoStereo = m_ScratchPage[19] & DATA_MONOSTEREO;
+			radioData->seekThreshold = m_ScratchPage[20];
+			radioData->alwaysOnTop = (m_ScratchPage[21] & DATA_ALWAYSONTOP) ? true : false;
+			radioData->showInTray = (m_ScratchPage[21] & DATA_SHOWINTRAY) ? true : false;
+			radioData->showInTitleBar = (m_ScratchPage[21] & DATA_SHOWINTITLEBAR) ? true : false;
+			radioData->muteOnStartup = (m_ScratchPage[21] & DATA_MUTEONSTARTUP) ? true : false;
+			radioData->scanTime = m_ScratchPage[21] & DATA_SCANTIME;
+			radioData->bufferSize = 0;
+
+			//have 12 PIs stored
+			BYTE *DataPtr;
+			WORD Freq, PI;
+			DataPtr = &m_ScratchPage[22];
+			WORD TopBit = ((m_ScratchPage[(FLASH_PI_NUM*3)+22]&0xff)<<8) + ((m_ScratchPage[(FLASH_PI_NUM*3)+23]&0xff)<<8);
+			for(i=0;i<FLASH_PI_NUM;i++)
+			{
+				PI = (((*DataPtr++)&0xff)<<8);
+				PI += (*DataPtr++ & 0xff);
+				Freq = (WORD)(((TopBit>>i)<<8)+*DataPtr++);
+				if((Freq != 0) && (Freq != 0x1ff) && (PI != 0) && (PI != 0xffff))
+				{
+					radioData->PI[i] = PI;
+					radioData->PI_Freq[i] = CalculateStationFrequency(Freq, radioData->band, radioData->spacing);
+				}
+			}
+
+			radioData->EonPI = (m_ScratchPage[60]<<8) & 0xff00;
+			radioData->EonPI += m_ScratchPage[61] & 0xff;
+		}
+
+		status = true;
+
+		//InitializeRadioData(radioData);
+	}
+		
+	return status;
 }
 
-bool CFMRadioDevice::SetRadioData(RadioData* radioData)
+
+/*bool CFMRadioDevice::SetRadioData(RadioData* radioData)
 {
 	bool status = false;
 
@@ -1572,7 +1948,110 @@ bool CFMRadioDevice::SetRadioData(RadioData* radioData)
 	}	
 
 	return status;
+}*/
+
+
+bool CFMRadioDevice::SetRadioData(RadioData* radioData)
+{
+	bool status = false;
+	int i, CSum;
+	
+	//Check that radio data is not NULL
+	if (radioData)
+	{
+		//Clear the entire scratch page to FFs
+		for (i = 0; i < SCRATCH_PAGE_SIZE; i++)
+			m_ScratchPage[i] = 0xFF;
+
+		//Clear the scratch page of used data to 00s
+		for (i = 0; i < SCRATCH_PAGE_USED_SIZE; i++)
+			m_ScratchPage[i] = 0x00;
+
+		if(radioData->band == DATA_BAND_875_108MHZ)
+		{
+			if((radioData->currentStation > 108.0) || (radioData->currentStation < 87.5))
+				radioData->currentStation = 100.1;
+		}
+		else
+		{
+			if((radioData->currentStation > 90.0) || (radioData->currentStation < 76.0))
+				radioData->currentStation = 82.0;
+		}
+
+
+		//See GetRadioData for the format of the scratch page
+		m_ScratchPage[0] |= (radioData->firstRun ? 0x00 : 0x01);
+		m_ScratchPage[1] |= radioData->swVersion;
+		m_ScratchPage[2] |= radioData->hwVersion;
+		m_ScratchPage[3] |= (CalculateStationFrequencyBits(radioData->preset[0]) >> 2) & 0xFF;
+		m_ScratchPage[4] |= (CalculateStationFrequencyBits(radioData->preset[0]) << 6) & 0xC0;
+		m_ScratchPage[4] |= (CalculateStationFrequencyBits(radioData->preset[1]) >> 4) & 0x3F;
+		m_ScratchPage[5] |= (CalculateStationFrequencyBits(radioData->preset[1]) << 4) & 0xF0;
+		m_ScratchPage[5] |= (CalculateStationFrequencyBits(radioData->preset[2]) >> 6) & 0x0F;
+		m_ScratchPage[6] |= (CalculateStationFrequencyBits(radioData->preset[2]) << 2) & 0xFC;
+		m_ScratchPage[6] |= (CalculateStationFrequencyBits(radioData->preset[3]) >> 8) & 0x03;
+		m_ScratchPage[7] |= CalculateStationFrequencyBits(radioData->preset[3]) & 0xFF;
+		m_ScratchPage[8] |= (CalculateStationFrequencyBits(radioData->preset[4]) >> 2) & 0xFF;
+		m_ScratchPage[9] |= (CalculateStationFrequencyBits(radioData->preset[4]) << 6) & 0xC0;
+		m_ScratchPage[9] |= (CalculateStationFrequencyBits(radioData->preset[5]) >> 4) & 0x3F;
+		m_ScratchPage[10] |= (CalculateStationFrequencyBits(radioData->preset[5]) << 4) & 0xF0;
+		m_ScratchPage[10] |= (CalculateStationFrequencyBits(radioData->preset[6]) >> 6) & 0x0F;
+		m_ScratchPage[11] |= (CalculateStationFrequencyBits(radioData->preset[6]) << 2) & 0xFC;
+		m_ScratchPage[11] |= (CalculateStationFrequencyBits(radioData->preset[7]) >> 8) & 0x03;
+		m_ScratchPage[12] |= CalculateStationFrequencyBits(radioData->preset[7]) & 0xFF;
+		m_ScratchPage[13] |= (CalculateStationFrequencyBits(radioData->preset[8]) >> 2) & 0xFF;
+		m_ScratchPage[14] |= (CalculateStationFrequencyBits(radioData->preset[8]) << 6) & 0xC0;
+		m_ScratchPage[14] |= (CalculateStationFrequencyBits(radioData->preset[9]) >> 4) & 0x3F;
+		m_ScratchPage[15] |= (CalculateStationFrequencyBits(radioData->preset[9]) << 4) & 0xF0;
+		m_ScratchPage[15] |= (CalculateStationFrequencyBits(radioData->preset[10]) >> 6) & 0x0F;
+		m_ScratchPage[16] |= (CalculateStationFrequencyBits(radioData->preset[10]) << 2) & 0xFC;
+		m_ScratchPage[16] |= (CalculateStationFrequencyBits(radioData->preset[11]) >> 8) & 0x03;
+		m_ScratchPage[17] |= CalculateStationFrequencyBits(radioData->preset[11]) & 0xFF;
+		m_ScratchPage[18] |= (CalculateStationFrequencyBits(radioData->currentStation) >> 2) & 0xFF;
+		m_ScratchPage[19] |= ((CalculateStationFrequencyBits(radioData->currentStation) << 6) & 0xC0) | radioData->band | radioData->monoStereo | radioData->spacing | radioData->deemphasis;
+		m_ScratchPage[20] |= radioData->seekThreshold;
+		if (radioData->alwaysOnTop) m_ScratchPage[21] |= DATA_ALWAYSONTOP;
+		if (radioData->showInTray) m_ScratchPage[21] |= DATA_SHOWINTRAY;
+		if (radioData->showInTitleBar) m_ScratchPage[21] |= DATA_SHOWINTITLEBAR;
+		if (radioData->muteOnStartup) m_ScratchPage[21] |= DATA_MUTEONSTARTUP;
+		m_ScratchPage[21] |= radioData->scanTime & 0x0F;
+
+		//save PI list
+		//have 12 PIs stored
+		BYTE *DataPtr;
+		WORD TopBit = 0;
+		DataPtr = &m_ScratchPage[22];
+		for(i=0;i<FLASH_PI_NUM;i++)
+		{
+			*DataPtr++ = (radioData->PI[i]>>8)& 0xff;
+			*DataPtr++ = radioData->PI[i] & 0xff;
+			*DataPtr++ = CalculateStationFrequencyBits(radioData->PI_Freq[i]) & 0xff;
+			TopBit |= (((CalculateStationFrequencyBits(radioData->PI_Freq[i]) & 0x100)>>8)<<i);
+		}
+		m_ScratchPage[(FLASH_PI_NUM*3)+22] = (TopBit>>8) & 0xff;
+		m_ScratchPage[(FLASH_PI_NUM*3)+23] = TopBit & 0xff;
+
+		m_ScratchPage[60] = (radioData->EonPI>>8) & 0xff;
+		m_ScratchPage[61] = radioData->EonPI & 0xff;
+		
+		//calc checksum
+		CSum = 0;
+		for(i=0;i<(SCRATCH_PAGE_SIZE-1);i++)
+			CSum+=m_ScratchPage[i];
+
+		CSum = CSum & 0xff;
+		CSum = ~CSum + 1;
+		CSum = CSum & 0xff;
+
+		m_ScratchPage[SCRATCH_PAGE_SIZE-1] = CSum;
+
+		if (SetScratchReport(SCRATCH_REPORT, m_ScratchPage, SCRATCH_PAGE_SIZE))
+			status = true;
+	}	
+
+	return status;
 }
+
 
 bool CFMRadioDevice::UpdateRDS()
 {
@@ -1611,14 +2090,16 @@ bool CFMRadioDevice::ReadAllRegisters(FMRADIO_REGISTER *registers)
 
 bool CFMRadioDevice::ChangeLED(BYTE ledState)
 {
+	return true;
 	bool status = false;
 
 	//Set the LED report with the state of the LED
 	BYTE ledReport[LED_REPORT_SIZE] = {LED_COMMAND, ledState, 0xFF};
+	
 
 	//Use set report to send the new LED state
 	if (SetLEDReport(LED_REPORT, ledReport, LED_REPORT_SIZE))
-		status = true;
+			status = true;
 
 	return status;
 }
@@ -1695,7 +2176,7 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 			}
 			else if (report == RDS_REPORT)
 			{
-				DWORD bytesRead;
+				DWORD bytesRead, Result;
 
 				OVERLAPPED o;
 				memset(&o, 0, sizeof(OVERLAPPED));
@@ -1716,8 +2197,17 @@ bool CFMRadioDevice::GetRegisterReport(BYTE report, FMRADIO_REGISTER* dataBuffer
 					DWORD error = GetLastError();
 					if (error == ERROR_IO_PENDING) 
 					{
-						if (GetOverlappedResult(m_FMRadioDataHandle, &o, &bytesRead, TRUE))
-							status = true;
+						do {
+							Result = WaitForSingleObject(o.hEvent, 20);
+						}while((Result == WAIT_TIMEOUT) && !ShouldQuit);
+						
+						if(ShouldQuit)
+							CancelIo(m_FMRadioDataHandle);
+						else
+						{
+							if(GetOverlappedResult(m_FMRadioDataHandle, &o, &bytesRead, false))
+								status = true;
+						}
 					}
 				}
 				else 
@@ -1879,33 +2369,35 @@ bool CFMRadioDevice::CreateRadioTimer()
 {
 	DWORD ThreadID;
 
-	if (!primaryRadio) return true;
-
-	if (h_radioTimer) {
-		// Didn't destroy the old one first!
-		return (false);
-	}
-
-	// Make sure we just don't quit
+	// Create our RDS thread
 	ShouldQuit = false;
-
-	// Create our Radio & RDS threads
-	h_radioTimer = CreateThread(NULL, 0, RadioThread, this, 0, &ThreadID); 
-	SetThreadPriority(h_radioTimer, THREAD_PRIORITY_HIGHEST);
 	h_rdsTimer = CreateThread(NULL, 0, RDSThread, this, 0, &ThreadID); 
 	SetThreadPriority(h_rdsTimer, THREAD_PRIORITY_HIGHEST);
+	
+	// Create our Radio thread
+	if (primaryRadio)
+	{
+		if (h_radioTimer) {
+			// Didn't destroy the old one first!
+			return (false);
+		}
 
-	m_StreamingAllowed = true;
+		// Make sure we just don't quit
+		h_radioTimer = CreateThread(NULL, 0, RadioThread, this, 0, &ThreadID); 
+		SetThreadPriority(h_radioTimer, THREAD_PRIORITY_HIGHEST);
+		m_StreamingAllowed = true;
 
+	}
+	
 	return true;
 }
 
 bool CFMRadioDevice::DestroyRadioTimer()
 {
-	if (!h_radioTimer) {
+	//if (!h_radioTimer) {//comment out so that secondary radio also released
 		// Already destroyed, or not created!
-		return (false);
-	}
+		//return (false);
+	//}
 
 	// destroy the timer
 	m_StreamingAllowed = false;
