@@ -4,9 +4,7 @@ The Silabs radio is a cheap USB FM Radio with RDS facilities. This project provi
 
 It's supported in the FreeICE front end and with [RoadRunner](http://guino.home.insightbb.com/roadrunner.html) in a very limited fashion at the moment, but possibly in full capacity in future.
 
-This currently supports the **Silabs reference radio** and **ADSTech Instant FM**. If you have an alternative vendor with a Silabs radio chipset, then please email me your VID and PID code for inclusion, as well as the name of the Audio device. You can then help test to see if it works.
-
-I'm told that the **Brando** radio works, but with no RDS. It's the same with **PCear** - no RDS & also with bad audio quality. However, these radios are still useful for AF & TA purposes. I can use them as a 2nd tuner to check signal strength before we change frequency on the main radio.
+This currently supports the **Silabs reference radio** and **ADSTech Instant FM**. I'm told that the **Brando** radio works, but with no RDS. It's the same with **PCear** - no RDS & also with bad audio quality. However, these radios are still useful for AF & TA purposes.
 
 Visit the [Digital Car UK Forums](http://www.digital-car.co.uk/forum/showthread.php?t=8867&page=14) for further details or to chat with the developer. My tag is "Beezer" and Guino is also contributing, so feel free to chat to him about this.
 
@@ -54,10 +52,4 @@ Visit the [Digital Car UK Forums](http://www.digital-car.co.uk/forum/showthread.
 13] Country Code (not extended as yet) and Region Code
 
 14] Limited legacy Road Runner compatibility
-
-**Upcoming Features**
-
-1] Would like to get RDS:TMC working. Am investigating. However, this would require a dedicated radio dongle, unless you only listen to stations with TMC.
-
-2] Would like to get EON and AF working, but once again this involves me purchasing & modifying another dongle. This may or may not happen.
 
