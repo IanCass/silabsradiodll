@@ -1,5 +1,3 @@
-![https://lh4.googleusercontent.com/-p9cmaVkRkcA/Tek567cfF0I/AAAAAAAAACM/73FuYMfKxew/s288/rds.png](https://lh4.googleusercontent.com/-p9cmaVkRkcA/Tek567cfF0I/AAAAAAAAACM/73FuYMfKxew/s288/rds.png)
-
 The Silabs radio is a cheap USB FM Radio with RDS facilities. This project provides a DLL that makes it easy for you to utilize the radio and RDS functions in your own project. Example VB6 code is supplied.
 
 It's supported in the FreeICE front end and with [RoadRunner](http://guino.home.insightbb.com/roadrunner.html) in a very limited fashion at the moment, but possibly in full capacity in future.
